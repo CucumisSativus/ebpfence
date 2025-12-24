@@ -1,2 +1,6 @@
 /vmlinux.h
 .idea
+bpf_bpfeb.*
+bpf_bpfel.*
+ebpfence
+*.bpf.c

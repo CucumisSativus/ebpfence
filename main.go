@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -16,6 +16,14 @@ import (
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags "-O2 -g -target bpf" Bpf ./deny_new_reads.bpf.c -- -I.
 
 func main() {
+	// Parse CLI flags
+	pid := flag.Uint("pid", 0, "Process ID to block")
+	flag.Parse()
+
+	if *pid == 0 {
+		log.Fatalf("Please specify a PID with -pid flag")
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -27,44 +35,30 @@ func main() {
 		cancel()
 	}()
 
-	// 1) Load
+	// 1) Load BPF objects
 	var objs BpfObjects
 	if err := LoadBpfObjects(&objs, &ebpf.CollectionOptions{}); err != nil {
 		log.Fatalf("load bpf objects: %v", err)
 	}
 	defer objs.Close()
 
-	// 2) Attach (LSM example)
-	lnk, err := link.AttachLSM(link.LSMOptions{
-		Program: objs.BlockNewReads, // name comes from SEC() function
-	})
+	// 2) Attach kprobe to do_sys_openat2
+	lnk, err := link.AttachLSM(link.LSMOptions{Program: objs.DenyFileOpen})
 	if err != nil {
-		log.Fatalf("attach lsm: %v", err)
+		log.Fatalf("attach kprobe: %v", err)
 	}
 	defer lnk.Close()
 
-	// 3) Configure policy
-	tgid := uint32(1234) // example; you’d pass via CLI
-	if err := setMode(objs.ModeMap, tgid, 1 /*learn*/); err != nil {
-		log.Fatalf("set learn: %v", err)
+	// 3) Add the PID to the blocked_pids map
+	pidKey := uint32(*pid)
+	blockedValue := uint8(1)
+	if err := objs.BlockedPids.Update(&pidKey, &blockedValue, ebpf.UpdateAny); err != nil {
+		log.Fatalf("update blocked_pids map: %v", err)
 	}
-	fmt.Println("learning… press Enter to enforce")
-	fmt.Scanln()
 
-	if err := setMode(objs.ModeMap, tgid, 2 /*enforce*/); err != nil {
-		log.Fatalf("set enforce: %v", err)
-	}
-	fmt.Println("enforcing… Ctrl+C to stop")
-
-	// 4) Optional: event loop (ringbuf/perf) would run here
+	fmt.Printf("Blocking file opens for PID %d (non-root only)\n", *pid)
+	fmt.Println("Press Ctrl+C to stop")
 
 	<-ctx.Done()
 	fmt.Println("exiting")
-}
-
-func setMode(m *ebpf.Map, tgid uint32, mode uint8) error {
-	if m == nil {
-		return errors.New("mode map is nil")
-	}
-	return m.Update(&tgid, &mode, ebpf.UpdateAny)
 }
