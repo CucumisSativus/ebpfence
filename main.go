@@ -13,7 +13,7 @@ import (
 	"github.com/cilium/ebpf/link"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags "-O2 -g -target bpf" Bpf ./deny_new_reads.bpf.c -- -I.
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags "-O2 -g -target bpf" Bpf ./bpf/deny_new_reads.bpf.c -- -I.
 
 func main() {
 	// Parse CLI flags
