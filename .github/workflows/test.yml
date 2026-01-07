@@ -39,3 +39,44 @@ jobs:
         file: ./coverage.out
         flags: unittests
       continue-on-error: true
+
+  integration-test:
+    runs-on: ubuntu-latest
+    # Integration tests require privileged access and kernel features
+    # This job is marked as optional and won't fail the workflow if it fails
+    continue-on-error: true
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.5'
+
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Install build tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang llvm libbpf-dev
+
+    - name: Generate eBPF bindings
+      run: go generate
+
+    - name: Check kernel support
+      run: |
+        echo "Checking kernel version..."
+        uname -r
+        echo "Checking for BTF support..."
+        ls -la /sys/kernel/btf/vmlinux || echo "BTF not available"
+        echo "Checking LSM support..."
+        cat /sys/kernel/security/lsm || echo "LSM info not available"
+
+    - name: Run integration tests
+      run: |
+        # Note: Integration tests may be skipped if kernel doesn't support eBPF LSM
+        sudo -E go test -v -tags=integration -timeout=5m ./...
+      continue-on-error: true

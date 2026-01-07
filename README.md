@@ -71,6 +71,29 @@ sudo ./ebpfence -disallowed "file1.txt,file2.txt" -threshold 2 -pid 12345
 
 ### Testing
 
+#### Unit Tests
+
+Run standard unit tests (no privileges required):
+```bash
+go test -v ./...
+```
+
+#### Integration Tests
+
+Integration tests load real eBPF programs and require:
+- Root privileges
+- Kernel 5.7+ with BTF support
+- LSM BPF enabled
+
+Run integration tests:
+```bash
+sudo go test -v -tags=integration ./...
+```
+
+The integration tests will automatically skip if your system doesn't meet the requirements.
+
+#### Test Program
+
 Build and run the test program:
 ```bash
 cd test
