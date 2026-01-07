@@ -7,7 +7,8 @@ on:
     branches: [ master, main ]
 
 jobs:
-  test:
+  unit-tests:
+    name: Unit Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -30,7 +31,7 @@ jobs:
     - name: Generate eBPF bindings
       run: go generate
 
-    - name: Run tests
+    - name: Run unit tests
       run: go test -v -race -coverprofile=coverage.out ./...
 
     - name: Upload coverage
@@ -39,3 +40,56 @@ jobs:
         file: ./coverage.out
         flags: unittests
       continue-on-error: true
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.5'
+
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Install build tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang llvm libbpf-dev
+
+    - name: Generate eBPF bindings
+      run: go generate
+
+    - name: Check kernel support
+      id: check_kernel
+      run: |
+        echo "Checking kernel version..."
+        uname -r
+        echo "Checking for BTF support..."
+        if [ -f /sys/kernel/btf/vmlinux ]; then
+          echo "btf_available=true" >> $GITHUB_OUTPUT
+          echo "BTF is available"
+        else
+          echo "btf_available=false" >> $GITHUB_OUTPUT
+          echo "BTF not available"
+        fi
+        echo "Checking LSM support..."
+        cat /sys/kernel/security/lsm || echo "LSM info not available"
+
+    - name: Run integration tests
+      if: steps.check_kernel.outputs.btf_available == 'true'
+      run: |
+        echo "Running integration tests with eBPF support..."
+        sudo -E go test -v -tags=integration -timeout=5m ./...
+
+    - name: Skip integration tests
+      if: steps.check_kernel.outputs.btf_available != 'true'
+      run: |
+        echo "⚠️  Skipping integration tests - kernel does not support eBPF (BTF not available)"
+        echo "Integration tests require kernel 5.7+ with BTF support"
