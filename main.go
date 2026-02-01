@@ -7,26 +7,23 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 )
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags "-O2 -g -target bpf" Bpf ./bpf/deny_new_reads.bpf.c -- -I.
 
 func main() {
-	disallowedFiles := flag.String("disallowed", "", "Comma-separated list of disallowed file patterns (e.g., '/etc/passwd,/etc/shadow')")
-	threshold := flag.Uint("threshold", 2, "Number of disallowed files before blocking (default: 2)")
-	pid := flag.Uint("pid", 0, "PID to block (default: 0, which blocks all processes)")
+	configFile := flag.String("config", "", "Path to JSON config file (required)")
 	flag.Parse()
 
-	if *disallowedFiles == "" {
-		log.Fatalf("Please specify disallowed files with -disallowed flag")
+	if *configFile == "" {
+		log.Fatalf("Please specify a config file with -config flag")
 	}
 
-	// Parse disallowed file patterns
-	patterns := strings.Split(*disallowedFiles, ",")
-	for i := range patterns {
-		patterns[i] = strings.TrimSpace(patterns[i])
+	// Load configuration from JSON config file
+	cfg, err := LoadConfig(*configFile)
+	if err != nil {
+		log.Fatalf("Failed to load config file: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -48,12 +45,12 @@ func main() {
 	defer provider.Close()
 
 	// Create the event handler with configuration
-	config := EventHandlerConfig{
-		DisallowedPatterns: patterns,
-		Threshold:          uint32(*threshold),
-		TargetPID:          uint32(*pid),
+	handlerConfig := EventHandlerConfig{
+		DisallowedPatterns: cfg.Patterns,
+		Threshold:          cfg.Threshold,
+		TargetPID:          cfg.TargetPID,
 	}
-	handler := NewEventHandler(provider, config)
+	handler := NewEventHandler(provider, handlerConfig)
 
 	// Run the event handler
 	if err := handler.Run(ctx); err != nil && err != context.Canceled {
