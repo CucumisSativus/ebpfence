@@ -202,13 +202,13 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	}
 	defer provider.Close()
 
-	config := EventHandlerConfig{
+	handlerConfig := EventHandlerConfig{
 		DisallowedPatterns: []string{secretDir + "/*"},
 		Threshold:          2,
 		TargetPID:          0, // Monitor all PIDs
 	}
 
-	handler := NewEventHandler(provider, config)
+	handler := NewEventHandler(provider, handlerConfig)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
