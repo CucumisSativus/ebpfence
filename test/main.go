@@ -51,7 +51,7 @@ func main() {
 
 	// Wait for user input before opening next 2 files
 	fmt.Println("\nPress Enter to open next 2 files...")
-	//bufio.NewReader(os.Stdin).ReadBytes('\n')
+	bufio.NewReader(os.Stdin).ReadBytes('\n')
 
 	// Open third file (should be blocked if in enforce mode)
 	fmt.Println("Opening file3.txt...")
