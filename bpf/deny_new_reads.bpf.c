@@ -53,14 +53,6 @@ struct {
     __uint(max_entries, 256 * 1024); // 256 KB ring buffer
 } events SEC(".maps");
 
-// Track per-PID file open count for disallowed files
-struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(max_entries, 10240);
-    __type(key, __u32);   // PID
-    __type(value, __u32); // Count of disallowed files opened
-} pid_violation_count SEC(".maps");
-
 // Hook into the openat syscall tracepoint
 SEC("tracepoint/syscalls/sys_enter_openat")
 int trace_openat(struct trace_event_raw_sys_enter *ctx) {
