@@ -11,16 +11,17 @@ eBPFence is an eBPF-based security monitoring and enforcement tool that tracks f
 ### Standard Build
 ```bash
 # Generate eBPF bindings from C code
-go generate
+go generate ./daemon/
 
-# Build the binary
-CGO_ENABLED=0 go build
+# Build both binaries
+CGO_ENABLED=0 go build -o ebpfence-daemon ./cmd/daemon/
+CGO_ENABLED=0 go build -o ebpfence-client ./cmd/client/
 
-# Or combined
-go generate && CGO_ENABLED=0 go build
+# Or use the build script
+./build.sh
 ```
 
-The `go generate` command runs `bpf2go` (defined in main.go:14) which compiles the C eBPF code in `bpf/deny_new_reads.bpf.c` into Go-embedded bytecode (`bpf_bpfeb.go` and `bpf_bpfel.go`).
+The `go generate` command runs `bpf2go` (defined in `daemon/generate.go`) which compiles the C eBPF code in `daemon/bpf/deny_new_reads.bpf.c` into Go-embedded bytecode (`daemon/bpf_bpfeb.go` and `daemon/bpf_bpfel.go`).
 
 ## Testing
 
@@ -37,7 +38,7 @@ Integration tests require root privileges and kernel 5.7+ with BTF and LSM BPF s
 sudo go test -v -tags=integration ./...
 ```
 
-Integration tests are in `integration_test.go` with build tag `//go:build integration`. They will automatically skip if system requirements aren't met.
+Integration tests are in `daemon/integration_test.go` with build tag `//go:build integration`. They will automatically skip if system requirements aren't met.
 
 ### Test Program
 A test program exists in `test/` directory to manually trigger file open events:
@@ -95,8 +96,11 @@ cat > config.json <<EOF
 }
 EOF
 
-# Run with config file
-sudo ./ebpfence -config config.json
+# Run the daemon with config file
+sudo ./ebpfence-daemon -config config.json
+
+# Run the client
+./ebpfence-client
 ```
 
 View blocked events in kernel trace:
@@ -106,39 +110,65 @@ sudo cat /sys/kernel/debug/tracing/trace_pipe
 
 ## Architecture
 
+### Project Structure
+
+```
+ebpfence/
+├── cmd/
+│   ├── daemon/main.go          # Daemon entry point (eBPF monitoring service)
+│   └── client/main.go          # Client entry point (interacts with daemon)
+├── daemon/                     # Core daemon package
+│   ├── bpf/
+│   │   ├── deny_new_reads.bpf.c  # eBPF C source code
+│   │   └── vmlinux.h              # Kernel type definitions for eBPF
+│   ├── generate.go             # go:generate directive for bpf2go
+│   ├── config.go               # JSON configuration loading
+│   ├── ebpf_interface.go       # Event struct + EBPFProvider interface
+│   ├── ebpf_adapter.go         # Production eBPF implementation (RealEBPFProvider)
+│   ├── ebpf_mock.go            # Mock provider for unit tests
+│   ├── event_handler.go        # Core business logic
+│   └── *_test.go               # Unit, integration, and example tests
+├── test/                       # Manual test program
+├── build.sh                    # Builds both binaries
+└── ...
+```
+
 ### Core Components
 
-**1. eBPF Programs (bpf/deny_new_reads.bpf.c)**
+**1. eBPF Programs (`daemon/bpf/deny_new_reads.bpf.c`)**
 - **Tracepoints**: `sys_enter_openat` and `sys_enter_openat2` capture file open attempts system-wide
 - **LSM Hook**: `file_open` enforces blocking by returning `-EPERM` for blocked PIDs
 - **BPF Maps**:
   - `blocked_pids` (hash map): tracks which PIDs are blocked
   - `events` (ring buffer): transfers events from kernel to userspace
-  - `pid_violation_count` (hash map): tracks violation counts per PID
 - All events are sent to userspace for processing via ring buffer
 
-**2. eBPF Provider Interface (ebpf_interface.go)**
+**2. eBPF Provider Interface (`daemon/ebpf_interface.go`)**
 - `EBPFProvider` interface abstracts eBPF operations for testability
-- `RealEBPFProvider` (ebpf_adapter.go): production implementation using cilium/ebpf library
-- `MockEBPFProvider` (ebpf_mock.go): test mock for unit tests
+- `RealEBPFProvider` (`daemon/ebpf_adapter.go`): production implementation using cilium/ebpf library
+- `MockEBPFProvider` (`daemon/ebpf_mock.go`): test mock for unit tests
 - Key operations: `ReadEvent()`, `BlockPID()`, `Close()`
 
-**3. Event Handler (event_handler.go)**
+**3. Event Handler (`daemon/event_handler.go`)**
 - Core business logic for processing events and blocking decisions
 - Maintains in-memory violation counts and blocked PID tracking
 - Pattern matching for disallowed files (supports wildcards via `filepath.Match`)
 - When threshold is reached, calls `provider.BlockPID()` which updates the kernel BPF map
 - Decoupled from eBPF implementation via `EBPFProvider` interface
 
-**4. Configuration (config.go)**
+**4. Configuration (`daemon/config.go`)**
 - JSON-based configuration file loading
 - Validates required fields (patterns, threshold)
 - Supports optional target PID specification
 
-**5. Main Application (main.go)**
+**5. Daemon Entry Point (`cmd/daemon/main.go`)**
 - CLI argument parsing (config file path)
 - Signal handling (SIGINT, SIGTERM)
-- Wires together provider and handler components
+- Wires together provider and handler components from the `daemon` package
+
+**6. Client Entry Point (`cmd/client/main.go`)**
+- Client for interacting with the running daemon
+- Placeholder for future features (list blocked PIDs, unblock PIDs)
 
 ### Data Flow
 
