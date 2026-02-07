@@ -8,6 +8,7 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // EventHandlerConfig holds configuration for the event handler
@@ -19,6 +20,7 @@ type EventHandlerConfig struct {
 
 // EventHandler manages the core logic of processing events and blocking PIDs
 type EventHandler struct {
+	mu              sync.RWMutex
 	provider        EBPFProvider
 	config          EventHandlerConfig
 	violationCounts map[uint32]uint32 // PID -> violation count
@@ -83,6 +85,9 @@ func (h *EventHandler) processEvent(event *Event) error {
 		return nil
 	}
 
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	// Process violation for this PID
 	h.violationCounts[event.Pid]++
 	pidViolations := h.violationCounts[event.Pid]
@@ -104,6 +109,8 @@ func (h *EventHandler) processEvent(event *Event) error {
 
 // GetViolationCount returns the total violation count across all PIDs
 func (h *EventHandler) GetViolationCount() uint32 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	var total uint32
 	for _, count := range h.violationCounts {
 		total += count
@@ -113,21 +120,29 @@ func (h *EventHandler) GetViolationCount() uint32 {
 
 // GetViolationCountForPID returns the violation count for a specific PID
 func (h *EventHandler) GetViolationCountForPID(pid uint32) uint32 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	return h.violationCounts[pid]
 }
 
 // IsBlocked returns whether any PID has been blocked
 func (h *EventHandler) IsBlocked() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	return len(h.blockedPIDs) > 0
 }
 
 // IsPIDBlocked returns whether a specific PID is blocked
 func (h *EventHandler) IsPIDBlocked(pid uint32) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	return h.blockedPIDs[pid]
 }
 
 // GetBlockedPIDs returns a slice of all blocked PIDs
 func (h *EventHandler) GetBlockedPIDs() []uint32 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	pids := make([]uint32, 0, len(h.blockedPIDs))
 	for pid := range h.blockedPIDs {
 		pids = append(pids, pid)

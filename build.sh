@@ -3,6 +3,10 @@ set -e
 
 echo "Building ebpfence..."
 
+# Generate protobuf Go code
+echo "Generating protobuf code..."
+go generate ./proto/
+
 # Generate eBPF bindings from C code
 echo "Generating eBPF bindings..."
 go generate ./daemon/

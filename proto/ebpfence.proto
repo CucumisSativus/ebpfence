@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package ebpfence;
+
+option go_package = "ebpfence/proto";
+
+service EBPFence {
+  rpc ListBlockedPIDs(ListBlockedPIDsRequest) returns (ListBlockedPIDsResponse);
+}
+
+message ListBlockedPIDsRequest {}
+
+message BlockedPID {
+  uint32 pid = 1;
+  uint32 violation_count = 2;
+}
+
+message ListBlockedPIDsResponse {
+  repeated BlockedPID blocked_pids = 1;
+}

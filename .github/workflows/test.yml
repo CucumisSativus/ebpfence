@@ -26,7 +26,15 @@ jobs:
     - name: Install build tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y clang llvm libbpf-dev
+        sudo apt-get install -y clang llvm libbpf-dev protobuf-compiler
+
+    - name: Install protoc Go plugins
+      run: |
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+    - name: Generate protobuf code
+      run: go generate ./proto/
 
     - name: Generate eBPF bindings
       run: go generate ./daemon/
@@ -61,7 +69,15 @@ jobs:
     - name: Install build tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y clang llvm libbpf-dev
+        sudo apt-get install -y clang llvm libbpf-dev protobuf-compiler
+
+    - name: Install protoc Go plugins
+      run: |
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+    - name: Generate protobuf code
+      run: go generate ./proto/
 
     - name: Generate eBPF bindings
       run: go generate ./daemon/

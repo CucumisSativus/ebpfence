@@ -14,6 +14,7 @@ import (
 
 func main() {
 	configFile := flag.String("config", "", "Path to JSON config file (required)")
+	socketPath := flag.String("socket", "/var/run/ebpfence.sock", "Path to Unix socket for gRPC API")
 	flag.Parse()
 
 	if *configFile == "" {
@@ -51,6 +52,15 @@ func main() {
 		TargetPID:          cfg.TargetPID,
 	}
 	handler := daemon.NewEventHandler(provider, handlerConfig)
+
+	// Start gRPC server in a goroutine
+	srv := daemon.NewServer(handler)
+	go func() {
+		if err := srv.Start(*socketPath); err != nil {
+			log.Printf("gRPC server error: %v", err)
+		}
+	}()
+	defer srv.Stop()
 
 	// Run the event handler
 	if err := handler.Run(ctx); err != nil && err != context.Canceled {
