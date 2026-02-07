@@ -8,9 +8,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-)
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags "-O2 -g -target bpf" Bpf ./bpf/deny_new_reads.bpf.c -- -I.
+	"ebpfence/daemon"
+)
 
 func main() {
 	configFile := flag.String("config", "", "Path to JSON config file (required)")
@@ -21,7 +21,7 @@ func main() {
 	}
 
 	// Load configuration from JSON config file
-	cfg, err := LoadConfig(*configFile)
+	cfg, err := daemon.LoadConfig(*configFile)
 	if err != nil {
 		log.Fatalf("Failed to load config file: %v", err)
 	}
@@ -38,19 +38,19 @@ func main() {
 	}()
 
 	// Create the eBPF provider
-	provider, err := NewRealEBPFProvider()
+	provider, err := daemon.NewRealEBPFProvider()
 	if err != nil {
 		log.Fatalf("failed to create eBPF provider: %v", err)
 	}
 	defer provider.Close()
 
 	// Create the event handler with configuration
-	handlerConfig := EventHandlerConfig{
+	handlerConfig := daemon.EventHandlerConfig{
 		DisallowedPatterns: cfg.Patterns,
 		Threshold:          cfg.Threshold,
 		TargetPID:          cfg.TargetPID,
 	}
-	handler := NewEventHandler(provider, handlerConfig)
+	handler := daemon.NewEventHandler(provider, handlerConfig)
 
 	// Run the event handler
 	if err := handler.Run(ctx); err != nil && err != context.Canceled {

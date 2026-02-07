@@ -32,42 +32,59 @@ When a process opens a disallowed file, eBPFence increments a violation counter.
 
 ### Build Steps
 
-1. Generate BPF bytecode:
+Using the build script:
 ```bash
-go generate
+./build.sh
 ```
 
-2. Build the binary:
+Or manually:
 ```bash
-CGO_ENABLED=0 go build
+# Generate BPF bytecode
+go generate ./daemon/
+
+# Build the daemon and client binaries
+CGO_ENABLED=0 go build -o ebpfence-daemon ./cmd/daemon/
+CGO_ENABLED=0 go build -o ebpfence-client ./cmd/client/
 ```
 
-Or combine both:
-```bash
-go generate && CGO_ENABLED=0 go build
-```
-
-The build process uses `bpf2go` to compile the C BPF code into Go-embedded bytecode.
+The build process uses `bpf2go` to compile the C BPF code in `daemon/bpf/` into Go-embedded bytecode. This produces two binaries:
+- **ebpfence-daemon** - The eBPF monitoring service that runs with root privileges
+- **ebpfence-client** - A client for interacting with the running daemon
 
 ## Usage
 
-### Running eBPFence
+### Running the Daemon
 
-Basic usage (requires root/CAP_BPF):
+The daemon requires root/CAP_BPF privileges and a JSON config file:
 ```bash
-sudo ./ebpfence -disallowed "/path/to/file1,/path/to/file2" -threshold 2
+# Create a config file
+cat > config.json <<EOF
+{
+  "patterns": ["/etc/passwd", "/etc/shadow"],
+  "threshold": 2
+}
+EOF
+
+# Run the daemon
+sudo ./ebpfence-daemon -config config.json
 ```
 
-Monitor a specific PID:
+### Running the Client
+
 ```bash
-sudo ./ebpfence -disallowed "file1.txt,file2.txt" -threshold 2 -pid 12345
+./ebpfence-client
 ```
 
-### Flags
+### Daemon Flags
 
-- `-disallowed` - Comma-separated list of file patterns to monitor (supports wildcards)
-- `-threshold` - Number of violations before blocking (default: 2)
-- `-pid` - Optional: specific PID to monitor (default: 0 = all processes)
+- `-config` - Path to JSON configuration file (required)
+
+### Configuration
+
+The config file supports the following fields:
+- **patterns** - Array of file path patterns to monitor (supports wildcards via `filepath.Match`)
+- **threshold** - Number of violations before blocking (must be > 0)
+- **target_pid** - Optional: specific PID to monitor (default: 0 = all processes)
 
 ### Testing
 
@@ -90,7 +107,7 @@ Run integration tests:
 sudo go test -v -tags=integration ./...
 ```
 
-The integration tests will automatically skip if your system doesn't meet the requirements.
+The integration tests (in `daemon/integration_test.go`) will automatically skip if your system doesn't meet the requirements.
 
 #### Test Program
 
