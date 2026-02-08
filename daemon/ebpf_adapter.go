@@ -13,11 +13,9 @@ import (
 
 // RealEBPFProvider is the production implementation of EBPFProvider
 type RealEBPFProvider struct {
-	objs          *BpfObjects
-	reader        *ringbuf.Reader
-	lsmLink       link.Link
-	tpLinkOpenat  link.Link
-	tpLinkOpenat2 link.Link
+	objs    *BpfObjects
+	reader  *ringbuf.Reader
+	lsmLink link.Link
 }
 
 // NewRealEBPFProvider creates and initializes a new RealEBPFProvider
@@ -38,23 +36,6 @@ func NewRealEBPFProvider() (*RealEBPFProvider, error) {
 		return nil, fmt.Errorf("attach LSM hook: %w", err)
 	}
 	provider.lsmLink = lsmLink
-
-	// Attach tracepoint for openat
-	tpLinkOpenat, err := link.Tracepoint("syscalls", "sys_enter_openat", provider.objs.TraceOpenat, nil)
-	if err != nil {
-		provider.Close()
-		return nil, fmt.Errorf("attach openat tracepoint: %w", err)
-	}
-	provider.tpLinkOpenat = tpLinkOpenat
-
-	// Attach tracepoint for openat2 (optional)
-	tpLinkOpenat2, err := link.Tracepoint("syscalls", "sys_enter_openat2", provider.objs.TraceOpenat2, nil)
-	if err != nil {
-		// openat2 might not be available on older kernels, so just log a warning
-		fmt.Printf("Warning: could not attach openat2 tracepoint: %v\n", err)
-	} else {
-		provider.tpLinkOpenat2 = tpLinkOpenat2
-	}
 
 	// Open the ring buffer
 	reader, err := ringbuf.NewReader(provider.objs.Events)
@@ -102,18 +83,6 @@ func (p *RealEBPFProvider) Close() error {
 	if p.reader != nil {
 		if err := p.reader.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("close reader: %w", err))
-		}
-	}
-
-	if p.tpLinkOpenat2 != nil {
-		if err := p.tpLinkOpenat2.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("close openat2 link: %w", err))
-		}
-	}
-
-	if p.tpLinkOpenat != nil {
-		if err := p.tpLinkOpenat.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("close openat link: %w", err))
 		}
 	}
 

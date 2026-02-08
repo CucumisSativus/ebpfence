@@ -76,9 +76,9 @@ func (h *EventHandler) processEvent(event *Event) error {
 		return nil
 	}
 
-	// Extract null-terminated strings
-	comm := string(bytes.TrimRight(event.Comm[:], "\x00"))
-	filename := string(bytes.TrimRight(event.Filename[:], "\x00"))
+	// Extract null-terminated strings (truncate at first null byte)
+	comm := nullTermStr(event.Comm[:])
+	filename := nullTermStr(event.Filename[:])
 
 	// Check if the file matches any disallowed pattern
 	if !matchesPattern(filename, h.config.DisallowedPatterns) {
@@ -148,6 +148,14 @@ func (h *EventHandler) GetBlockedPIDs() []uint32 {
 		pids = append(pids, pid)
 	}
 	return pids
+}
+
+// nullTermStr returns the string up to the first null byte.
+func nullTermStr(b []byte) string {
+	if i := bytes.IndexByte(b, 0); i >= 0 {
+		return string(b[:i])
+	}
+	return string(b)
 }
 
 // matchesPattern checks if a filename matches any of the disallowed patterns

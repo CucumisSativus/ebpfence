@@ -17,27 +17,6 @@ struct {
     __type(value, __u8);  // 1 if blocked
 } blocked_pids SEC(".maps");
 
-SEC("lsm/file_open") // sleepable hook variant
-int BPF_PROG(deny_file_open, struct file *file, const struct cred *cred){
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
-    char comm[16];
-    __u8 *blocked;
-
-    // Look up the PID in the blocked_pids map
-    blocked = bpf_map_lookup_elem(&blocked_pids, &pid);
-    if (!blocked) {
-        return 0;
-    }
-
-    // Log the blocked access to kernel trace buffer
-    bpf_get_current_comm(&comm, sizeof(comm));
-    bpf_printk("BLOCKED: PID %d (%s) denied file permission", pid, comm);
-
-    // Block the access
-    return -EPERM;
-}
-
 // Structure to hold the data we want to send to userspace
 struct event_t {
     __u32 pid;              // Process ID
@@ -53,57 +32,42 @@ struct {
     __uint(max_entries, 256 * 1024); // 256 KB ring buffer
 } events SEC(".maps");
 
-// Hook into the openat syscall tracepoint
-SEC("tracepoint/syscalls/sys_enter_openat")
-int trace_openat(struct trace_event_raw_sys_enter *ctx) {
-    struct event_t *e;
+SEC("lsm.s/file_open") // sleepable hook variant (required for bpf_d_path)
+int BPF_PROG(deny_file_open, struct file *file, const struct cred *cred){
     __u64 pid_tgid = bpf_get_current_pid_tgid();
     __u32 pid = pid_tgid >> 32;
+    __u8 *blocked;
 
-    // Reserve space in ring buffer
-    e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
-    if (!e)
-        return 0;
+    // Look up the PID in the blocked_pids map — if blocked, deny immediately
+    blocked = bpf_map_lookup_elem(&blocked_pids, &pid);
+    if (blocked) {
+        bpf_printk("BLOCKED: PID %d denied file permission", pid);
+        return -EPERM;
+    }
 
-    // Get process information
-    e->pid = pid;
-    e->uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
-
-    // Get process name
-    bpf_get_current_comm(&e->comm, sizeof(e->comm));
-
-    // Get the filename from syscall arguments (arg1 for openat)
-    bpf_probe_read_user_str(&e->filename, sizeof(e->filename), (void *)ctx->args[1]);
-
-    // Get the flags (arg2 for openat)
-    e->flags = (int)ctx->args[2];
-
-    // Submit the event to userspace
-    bpf_ringbuf_submit(e, 0);
-
-    return 0;
-}
-
-// Hook into openat2 for newer kernels
-SEC("tracepoint/syscalls/sys_enter_openat2")
-int trace_openat2(struct trace_event_raw_sys_enter *ctx) {
+    // Emit an event for userspace processing
     struct event_t *e;
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
-
     e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e)
         return 0;
 
     e->pid = pid;
     e->uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
-
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
-    bpf_probe_read_user_str(&e->filename, sizeof(e->filename), (void *)ctx->args[1]);
-    e->flags = 0;  // openat2 has a different structure for flags
+
+    // Zero the filename buffer to prevent leftover ring buffer data from leaking
+    __builtin_memset(e->filename, 0, sizeof(e->filename));
+
+    // Use bpf_d_path to read the resolved filename from kernel dentry cache
+    int ret = bpf_d_path(&file->f_path, e->filename, sizeof(e->filename));
+    if (ret < 0) {
+        // If bpf_d_path fails, submit with empty filename
+        e->filename[0] = '\0';
+    }
+
+    e->flags = BPF_CORE_READ(file, f_flags);
 
     bpf_ringbuf_submit(e, 0);
 
     return 0;
 }
-
