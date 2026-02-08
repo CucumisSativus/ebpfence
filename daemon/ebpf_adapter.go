@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -13,9 +14,11 @@ import (
 
 // RealEBPFProvider is the production implementation of EBPFProvider
 type RealEBPFProvider struct {
-	objs    *BpfObjects
-	reader  *ringbuf.Reader
-	lsmLink link.Link
+	objs      *BpfObjects
+	reader    *ringbuf.Reader
+	lsmLink   link.Link
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // NewRealEBPFProvider creates and initializes a new RealEBPFProvider
@@ -76,31 +79,32 @@ func (p *RealEBPFProvider) BlockPID(pid uint32) error {
 	return nil
 }
 
-// Close cleans up all resources
+// Close cleans up all resources. Safe to call multiple times.
 func (p *RealEBPFProvider) Close() error {
-	var errs []error
+	p.closeOnce.Do(func() {
+		var errs []error
 
-	if p.reader != nil {
-		if err := p.reader.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("close reader: %w", err))
+		if p.reader != nil {
+			if err := p.reader.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("close reader: %w", err))
+			}
 		}
-	}
 
-	if p.lsmLink != nil {
-		if err := p.lsmLink.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("close lsm link: %w", err))
+		if p.lsmLink != nil {
+			if err := p.lsmLink.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("close lsm link: %w", err))
+			}
 		}
-	}
 
-	if p.objs != nil {
-		if err := p.objs.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("close bpf objects: %w", err))
+		if p.objs != nil {
+			if err := p.objs.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("close bpf objects: %w", err))
+			}
 		}
-	}
 
-	if len(errs) > 0 {
-		return fmt.Errorf("errors closing provider: %v", errs)
-	}
-
-	return nil
+		if len(errs) > 0 {
+			p.closeErr = fmt.Errorf("errors closing provider: %v", errs)
+		}
+	})
+	return p.closeErr
 }

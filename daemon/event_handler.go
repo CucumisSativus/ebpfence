@@ -3,7 +3,6 @@ package daemon
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -47,24 +46,25 @@ func (h *EventHandler) Run(ctx context.Context) error {
 	fmt.Println("Press Ctrl+C to stop")
 	fmt.Println()
 
+	// Close the provider when the context is cancelled to unblock ReadEvent
+	go func() {
+		<-ctx.Done()
+		h.provider.Close()
+	}()
+
 	// Process events in a loop
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			event, err := h.provider.ReadEvent()
-			if err != nil {
-				if errors.Is(err, context.Canceled) {
-					return nil
-				}
-				log.Printf("reading event: %v", err)
-				continue
+		event, err := h.provider.ReadEvent()
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
+			log.Printf("reading event: %v", err)
+			continue
+		}
 
-			if err := h.processEvent(event); err != nil {
-				log.Printf("processing event: %v", err)
-			}
+		if err := h.processEvent(event); err != nil {
+			log.Printf("processing event: %v", err)
 		}
 	}
 }

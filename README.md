@@ -4,21 +4,21 @@ eBPFence is an eBPF-based security monitoring and enforcement tool that tracks f
 
 ## What It Does
 
-eBPFence uses Linux Security Modules (LSM) and tracepoints to:
+eBPFence uses a single sleepable LSM (Linux Security Module) hook to:
 
-1. **Monitor file access** - Tracks all `openat` and `openat2` syscalls across the system
+1. **Monitor file access** - Tracks all file open operations across the system via the `file_open` LSM hook
 2. **Detect violations** - Identifies when processes attempt to open disallowed files (based on patterns you specify)
 3. **Enforce restrictions** - Automatically blocks processes from opening ANY files after they exceed the violation threshold
 4. **Log activity** - Records violations and blocking events to both userspace and kernel trace buffers
 
 ### How It Works
 
-- **Tracepoints** (`sys_enter_openat`, `sys_enter_openat2`) capture file open attempts and send events to userspace
-- **LSM Hook** (`file_open`) enforces blocking by returning `-EPERM` for processes in the blocked list
+- **Sleepable LSM Hook** (`file_open`) handles both monitoring and enforcement in a single BPF program
+- **`bpf_d_path`** resolves filenames from the kernel dentry cache (no expensive userspace memory reads)
 - **BPF Maps** maintain state about which PIDs are blocked
 - **Ring Buffer** efficiently transfers events from kernel to userspace
 
-When a process opens a disallowed file, eBPFence increments a violation counter. Once the threshold is reached, the process PID is added to a BPF hash map. The LSM hook checks this map on every file operation and denies access for blocked PIDs.
+When a process opens a file, the LSM hook emits an event to userspace via the ring buffer. Userspace pattern-matches the filename and increments a violation counter if it matches a disallowed pattern. Once the threshold is reached, the process PID is added to a BPF hash map. On subsequent file operations, the LSM hook checks this map and denies access for blocked PIDs.
 
 ## Building
 
