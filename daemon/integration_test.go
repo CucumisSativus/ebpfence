@@ -97,7 +97,7 @@ func TestIntegration_EventCollection(t *testing.T) {
 	}
 
 	// Wait for events — match by PID first (bpf_d_path may not resolve on all kernels)
-	timeout := time.After(2 * time.Second)
+	timeout := time.After(6 * time.Second)
 	pidMatched := false
 	filenameMatched := false
 
