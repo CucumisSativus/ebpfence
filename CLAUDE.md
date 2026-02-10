@@ -136,12 +136,14 @@ ebpfence/
 ### Core Components
 
 **1. eBPF Programs (`daemon/bpf/deny_new_reads.bpf.c`)**
-- **Tracepoints**: `sys_enter_openat` and `sys_enter_openat2` capture file open attempts system-wide
-- **LSM Hook**: `file_open` enforces blocking by returning `-EPERM` for blocked PIDs
+- **LSM Hook**: `lsm.s/file_open` (sleepable variant) performs both event collection and blocking enforcement
+  - Captures all file open attempts system-wide and sends to userspace via ring buffer
+  - Uses `bpf_d_path()` to resolve full file paths (requires sleepable LSM hook)
+  - Checks `blocked_pids` map and returns `-EPERM` for blocked PIDs
 - **BPF Maps**:
   - `blocked_pids` (hash map): tracks which PIDs are blocked
   - `events` (ring buffer): transfers events from kernel to userspace
-- All events are sent to userspace for processing via ring buffer
+- **Note**: Requires LSM BPF to be enabled at boot time (`lsm=...,bpf` kernel parameter)
 
 **2. eBPF Provider Interface (`daemon/ebpf_interface.go`)**
 - `EBPFProvider` interface abstracts eBPF operations for testability
@@ -172,34 +174,41 @@ ebpfence/
 
 ### Data Flow
 
-1. User opens a file → kernel tracepoint captures event
-2. Tracepoint sends event to ring buffer
-3. `RealEBPFProvider.ReadEvent()` reads from ring buffer
-4. `EventHandler.processEvent()` checks if file matches disallowed patterns
-5. If match, increment violation count
-6. If threshold reached, `provider.BlockPID()` updates `blocked_pids` BPF map
-7. LSM hook checks `blocked_pids` on all subsequent file operations
-8. If PID is blocked, LSM returns `-EPERM` to deny access
+1. User opens a file → kernel LSM hook (`file_open`) is triggered
+2. LSM hook checks if PID is in `blocked_pids` map
+   - If blocked: immediately returns `-EPERM` to deny access
+   - If not blocked: continues to step 3
+3. LSM hook sends event to ring buffer with file path (via `bpf_d_path`)
+4. `RealEBPFProvider.ReadEvent()` reads event from ring buffer in userspace
+5. `EventHandler.processEvent()` checks if file matches disallowed patterns
+6. If match, increment violation count in userspace
+7. If threshold reached, `provider.BlockPID()` updates `blocked_pids` BPF map
+8. Subsequent file opens by that PID are blocked at step 2
 
 ### Key Design Decisions
 
 - **Interface-based architecture**: `EBPFProvider` interface enables testing without kernel access
+- **LSM-only design**: Uses single LSM hook for both event collection and enforcement (optimized for performance)
 - **Userspace violation tracking**: Violation counts and pattern matching done in Go for flexibility
 - **BPF map blocking**: Only PIDs that exceed threshold are added to kernel map for enforcement
 - **Process-level blocking**: Once blocked, a process cannot open ANY files (not file-specific)
-- **Dual tracepoints**: Supports both `openat` and `openat2` syscalls (openat2 optional for older kernels)
+- **Sleepable LSM hook**: Required to use `bpf_d_path()` for reliable file path resolution
 
 ## System Requirements
 
 - Linux kernel 5.7+ with BTF (BPF Type Format) support
-- LSM BPF must be enabled: `bpf` must be in `/sys/kernel/security/lsm`
+- **LSM BPF must be enabled at boot**:
+  - Add `lsm=...,bpf` to kernel boot parameters (e.g., in `/etc/default/grub`)
+  - Verify with: `cat /sys/kernel/security/lsm` (should contain `bpf`)
+  - **Without this, the tool will not receive any file open events**
 - Root privileges or CAP_BPF capability
 - clang, libbpf headers for building
 - Go 1.21+
 
 ## Known Limitations
 
+- **Requires LSM BPF at boot**: Kernel must be booted with `lsm=...,bpf` parameter
 - Process names limited to 16 characters (kernel `TASK_COMM_LEN`)
 - Blocking is process-level, not file-level (all file access denied once blocked)
-- LSM hook fires on every file operation (monitor performance in production)
-- Requires kernel 5.7+ with BTF and LSM BPF support
+- LSM hook fires on every file operation (may impact performance on high I/O systems)
+- `bpf_d_path()` may fail to resolve paths in some cases (e.g., anonymous files, pipes)

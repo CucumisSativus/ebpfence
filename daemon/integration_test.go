@@ -125,7 +125,7 @@ func TestIntegration_EventCollection(t *testing.T) {
 				t.Log("This is expected on some kernel configurations")
 				return
 			}
-			t.Fatal("Timeout waiting for file open event")
+			t.Fatal("Timeout waiting for file open event. This likely means LSM BPF is not active. Check that 'bpf' is in /sys/kernel/security/lsm and the kernel was booted with lsm=...,bpf parameter.")
 		}
 	}
 }
@@ -267,17 +267,25 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	t.Logf("Is PID blocked: %v", handler.IsPIDBlocked(currentPID))
 	t.Logf("Total violations across all PIDs: %d", handler.GetViolationCount())
 
-	// Note: The exact violation count may vary due to timing and other processes
-	if violations > 0 {
-		t.Logf("Successfully detected %d violations!", violations)
-	} else {
-		t.Log("Note: No violations detected (may be due to timing or event processing)")
-	}
-
 	cancel()
 	<-done
 
-	t.Log("Integration test completed successfully")
+	// Test must detect at least some violations to be valid
+	if violations == 0 {
+		t.Fatal("Expected to detect violations for secret file access, but got 0. This likely means LSM BPF is not active. Check that 'bpf' is in /sys/kernel/security/lsm")
+	}
+
+	// We expect at least 2 violations (threshold)
+	if violations < 2 {
+		t.Errorf("Expected at least 2 violations (our threshold), got %d", violations)
+	}
+
+	// Verify PID was blocked
+	if !handler.IsPIDBlocked(currentPID) {
+		t.Errorf("Expected PID %d to be blocked after %d violations (threshold: 2)", currentPID, violations)
+	}
+
+	t.Logf("Successfully detected %d violations and blocked PID %d!", violations, currentPID)
 }
 
 // nullTerminatedString converts a null-terminated byte array to a string
