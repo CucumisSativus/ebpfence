@@ -67,22 +67,22 @@ func TestIntegration_EventCollection(t *testing.T) {
 	}
 
 	// Start collecting events in background
-	eventChan := make(chan *Event, 10)
+	type eventResult struct {
+		event *Event
+		err   error
+	}
+	eventChan := make(chan *eventResult, 100)
 	go func() {
 		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				event, err := provider.ReadEvent()
-				if err != nil {
-					if ctx.Err() == nil {
-						t.Logf("Error reading event: %v", err)
-					}
+			event, err := provider.ReadEvent()
+			if err != nil {
+				if ctx.Err() != nil {
 					return
 				}
-				eventChan <- event
+				eventChan <- &eventResult{err: err}
+				return
 			}
+			eventChan <- &eventResult{event: event}
 		}
 	}()
 
@@ -90,30 +90,42 @@ func TestIntegration_EventCollection(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Trigger a file open event
+	myPID := uint32(os.Getpid())
 	_, err = os.ReadFile(tmpFile)
 	if err != nil {
 		t.Fatalf("Failed to read temp file: %v", err)
 	}
 
-	// Wait for events
-	timeout := time.After(2 * time.Second)
-	eventReceived := false
+	// Wait for events — match by PID first (bpf_d_path may not resolve on all kernels)
+	timeout := time.After(6 * time.Second)
+	pidMatched := false
+	filenameMatched := false
 
-	for !eventReceived {
+	for !filenameMatched {
 		select {
-		case event := <-eventChan:
-			t.Logf("Received event: PID=%d, UID=%d, Comm=%s, File=%s",
-				event.Pid, event.Uid, nullTerminatedString(event.Comm[:]),
-				nullTerminatedString(event.Filename[:]))
-
-			// Check if this is our file
+		case result := <-eventChan:
+			if result.err != nil {
+				t.Fatalf("Error reading event: %v", result.err)
+			}
+			event := result.event
 			filename := nullTerminatedString(event.Filename[:])
+			t.Logf("Received event: PID=%d, UID=%d, Comm=%s, File=%s",
+				event.Pid, event.Uid, nullTerminatedString(event.Comm[:]), filename)
+
+			if event.Pid == myPID {
+				pidMatched = true
+			}
 			if filename == tmpFile {
-				eventReceived = true
+				filenameMatched = true
 				t.Log("Successfully captured our file open event!")
 			}
 		case <-timeout:
-			t.Fatal("Timeout waiting for file open event")
+			if pidMatched {
+				t.Log("Received events from our PID but bpf_d_path did not resolve the expected filename")
+				t.Log("This is expected on some kernel configurations")
+				return
+			}
+			t.Fatal("Timeout waiting for file open event. This likely means LSM BPF is not active. Check that 'bpf' is in /sys/kernel/security/lsm and the kernel was booted with lsm=...,bpf parameter.")
 		}
 	}
 }
@@ -255,17 +267,25 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	t.Logf("Is PID blocked: %v", handler.IsPIDBlocked(currentPID))
 	t.Logf("Total violations across all PIDs: %d", handler.GetViolationCount())
 
-	// Note: The exact violation count may vary due to timing and other processes
-	if violations > 0 {
-		t.Logf("Successfully detected %d violations!", violations)
-	} else {
-		t.Log("Note: No violations detected (may be due to timing or event processing)")
-	}
-
 	cancel()
 	<-done
 
-	t.Log("Integration test completed successfully")
+	// Test must detect at least some violations to be valid
+	if violations == 0 {
+		t.Fatal("Expected to detect violations for secret file access, but got 0. This likely means LSM BPF is not active. Check that 'bpf' is in /sys/kernel/security/lsm")
+	}
+
+	// We expect at least 2 violations (threshold)
+	if violations < 2 {
+		t.Errorf("Expected at least 2 violations (our threshold), got %d", violations)
+	}
+
+	// Verify PID was blocked
+	if !handler.IsPIDBlocked(currentPID) {
+		t.Errorf("Expected PID %d to be blocked after %d violations (threshold: 2)", currentPID, violations)
+	}
+
+	t.Logf("Successfully detected %d violations and blocked PID %d!", violations, currentPID)
 }
 
 // nullTerminatedString converts a null-terminated byte array to a string

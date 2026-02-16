@@ -3,7 +3,6 @@ package daemon
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -47,24 +46,25 @@ func (h *EventHandler) Run(ctx context.Context) error {
 	fmt.Println("Press Ctrl+C to stop")
 	fmt.Println()
 
+	// Close the provider when the context is cancelled to unblock ReadEvent
+	go func() {
+		<-ctx.Done()
+		h.provider.Close()
+	}()
+
 	// Process events in a loop
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			event, err := h.provider.ReadEvent()
-			if err != nil {
-				if errors.Is(err, context.Canceled) {
-					return nil
-				}
-				log.Printf("reading event: %v", err)
-				continue
+		event, err := h.provider.ReadEvent()
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
+			log.Printf("reading event: %v", err)
+			continue
+		}
 
-			if err := h.processEvent(event); err != nil {
-				log.Printf("processing event: %v", err)
-			}
+		if err := h.processEvent(event); err != nil {
+			log.Printf("processing event: %v", err)
 		}
 	}
 }
@@ -76,9 +76,9 @@ func (h *EventHandler) processEvent(event *Event) error {
 		return nil
 	}
 
-	// Extract null-terminated strings
-	comm := string(bytes.TrimRight(event.Comm[:], "\x00"))
-	filename := string(bytes.TrimRight(event.Filename[:], "\x00"))
+	// Extract null-terminated strings (truncate at first null byte)
+	comm := nullTermStr(event.Comm[:])
+	filename := nullTermStr(event.Filename[:])
 
 	// Check if the file matches any disallowed pattern
 	if !matchesPattern(filename, h.config.DisallowedPatterns) {
@@ -148,6 +148,14 @@ func (h *EventHandler) GetBlockedPIDs() []uint32 {
 		pids = append(pids, pid)
 	}
 	return pids
+}
+
+// nullTermStr returns the string up to the first null byte.
+func nullTermStr(b []byte) string {
+	if i := bytes.IndexByte(b, 0); i >= 0 {
+		return string(b[:i])
+	}
+	return string(b)
 }
 
 // matchesPattern checks if a filename matches any of the disallowed patterns

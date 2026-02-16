@@ -39,8 +39,16 @@ jobs:
     - name: Generate eBPF bindings
       run: go generate ./daemon/
 
+    - name: Build binaries
+      run: |
+        CGO_ENABLED=0 go build -o ebpfence-daemon ./cmd/daemon/
+        CGO_ENABLED=0 go build -o ebpfence-client ./cmd/client/
+        echo "✓ Both binaries built successfully"
+
     - name: Run unit tests
-      run: go test -v -race -coverprofile=coverage.out ./...
+      run: |
+        # Note: Integration tests excluded (require -tags=integration)
+        go test -v -race -coverprofile=coverage.out ./...
 
     - name: Upload coverage
       uses: codecov/codecov-action@v4
@@ -51,7 +59,7 @@ jobs:
 
   integration-tests:
     name: Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: unit-tests
 
     steps:
@@ -66,11 +74,6 @@ jobs:
     - name: Install dependencies
       run: go mod download
 
-    - name: Install build tools
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y clang llvm libbpf-dev protobuf-compiler
-
     - name: Install protoc Go plugins
       run: |
         go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
@@ -83,29 +86,29 @@ jobs:
       run: go generate ./daemon/
 
     - name: Check kernel support
-      id: check_kernel
       run: |
         echo "Checking kernel version..."
         uname -r
+
         echo "Checking for BTF support..."
-        if [ -f /sys/kernel/btf/vmlinux ]; then
-          echo "btf_available=true" >> $GITHUB_OUTPUT
-          echo "BTF is available"
-        else
-          echo "btf_available=false" >> $GITHUB_OUTPUT
-          echo "BTF not available"
+        if [ ! -f /sys/kernel/btf/vmlinux ]; then
+          echo "✗ BTF not available"
+          exit 1
         fi
-        echo "Checking LSM support..."
-        cat /sys/kernel/security/lsm || echo "LSM info not available"
+        echo "✓ BTF is available"
+
+        echo "Checking LSM BPF support..."
+        if [ ! -f /sys/kernel/security/lsm ]; then
+          echo "✗ LSM info not available"
+          exit 1
+        fi
+        LSM_LIST=$(cat /sys/kernel/security/lsm)
+        echo "LSM list: $LSM_LIST"
+        if ! echo "$LSM_LIST" | grep -q "bpf"; then
+          echo "✗ LSM BPF is NOT enabled (bpf not in LSM list)"
+          exit 1
+        fi
+        echo "✓ LSM BPF is enabled"
 
     - name: Run integration tests
-      if: steps.check_kernel.outputs.btf_available == 'true'
-      run: |
-        echo "Running integration tests with eBPF support..."
-        sudo -E go test -v -tags=integration -timeout=5m ./...
-
-    - name: Skip integration tests
-      if: steps.check_kernel.outputs.btf_available != 'true'
-      run: |
-        echo "⚠️  Skipping integration tests - kernel does not support eBPF (BTF not available)"
-        echo "Integration tests require kernel 5.7+ with BTF support"
+      run: sudo go test -v -tags=integration -timeout=5m ./daemon/
