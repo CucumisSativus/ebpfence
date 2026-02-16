@@ -79,6 +79,14 @@ func (p *RealEBPFProvider) BlockPID(pid uint32) error {
 	return nil
 }
 
+// UnblockPID removes a PID from the blocked list
+func (p *RealEBPFProvider) UnblockPID(pid uint32) error {
+	if err := p.objs.BlockedPids.Delete(pid); err != nil {
+		return fmt.Errorf("failed to delete from blocked_pids map: %w", err)
+	}
+	return nil
+}
+
 // Close cleans up all resources. Safe to call multiple times.
 func (p *RealEBPFProvider) Close() error {
 	p.closeOnce.Do(func() {

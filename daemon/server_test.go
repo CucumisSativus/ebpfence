@@ -172,3 +172,101 @@ func TestServer_ListBlockedPIDs_MultipleBlocked(t *testing.T) {
 	cancel()
 	<-done
 }
+
+func TestServer_UnblockPID_Success(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Events that will block PID 1000
+	events := []*Event{
+		CreateMockEvent(1000, 1000, "proc1", "/etc/passwd"),
+		CreateMockEvent(1000, 1000, "proc1", "/etc/shadow"),
+	}
+
+	provider := NewMockEBPFProvider(ctx, events)
+	defer provider.Close()
+
+	handler := NewEventHandler(provider, EventHandlerConfig{
+		DisallowedPatterns: []string{"/etc/*"},
+		Threshold:          2,
+	})
+
+	// Process events to block PID 1000.
+	done := make(chan error, 1)
+	go func() {
+		done <- handler.Run(ctx)
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	client, cleanup := startTestServer(t, handler)
+	defer cleanup()
+
+	// Verify PID is blocked.
+	listResp, err := client.ListBlockedPIDs(context.Background(), &pb.ListBlockedPIDsRequest{})
+	if err != nil {
+		t.Fatalf("ListBlockedPIDs: %v", err)
+	}
+	if len(listResp.BlockedPids) != 1 || listResp.BlockedPids[0].Pid != 1000 {
+		t.Fatalf("expected PID 1000 to be blocked, got %v", listResp.BlockedPids)
+	}
+
+	// Unblock PID 1000 via RPC.
+	_, err = client.UnblockPID(context.Background(), &pb.UnblockPIDRequest{Pid: 1000})
+	if err != nil {
+		t.Fatalf("UnblockPID: %v", err)
+	}
+
+	// Verify PID is no longer in the blocked list.
+	listResp, err = client.ListBlockedPIDs(context.Background(), &pb.ListBlockedPIDsRequest{})
+	if err != nil {
+		t.Fatalf("ListBlockedPIDs after unblock: %v", err)
+	}
+	if len(listResp.BlockedPids) != 0 {
+		t.Errorf("expected 0 blocked PIDs after unblock, got %d", len(listResp.BlockedPids))
+	}
+
+	cancel()
+	<-done
+}
+
+func TestServer_UnblockPID_NotBlocked(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	provider := NewMockEBPFProvider(ctx, []*Event{})
+	defer provider.Close()
+
+	handler := NewEventHandler(provider, EventHandlerConfig{
+		DisallowedPatterns: []string{"/etc/*"},
+		Threshold:          2,
+	})
+
+	client, cleanup := startTestServer(t, handler)
+	defer cleanup()
+
+	_, err := client.UnblockPID(context.Background(), &pb.UnblockPIDRequest{Pid: 9999})
+	if err == nil {
+		t.Fatal("expected error when unblocking non-blocked PID")
+	}
+}
+
+func TestServer_UnblockPID_InvalidPID(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	provider := NewMockEBPFProvider(ctx, []*Event{})
+	defer provider.Close()
+
+	handler := NewEventHandler(provider, EventHandlerConfig{
+		DisallowedPatterns: []string{"/etc/*"},
+		Threshold:          2,
+	})
+
+	client, cleanup := startTestServer(t, handler)
+	defer cleanup()
+
+	_, err := client.UnblockPID(context.Background(), &pb.UnblockPIDRequest{Pid: 0})
+	if err == nil {
+		t.Fatal("expected error when unblocking PID 0")
+	}
+}

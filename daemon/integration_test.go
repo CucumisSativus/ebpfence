@@ -288,6 +288,56 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	t.Logf("Successfully detected %d violations and blocked PID %d!", violations, currentPID)
 }
 
+// TestIntegration_UnblockFunctionality tests that unblocking actually works
+func TestIntegration_UnblockFunctionality(t *testing.T) {
+	checkIntegrationTestRequirements(t)
+
+	provider, err := NewRealEBPFProvider()
+	if err != nil {
+		t.Fatalf("Failed to create eBPF provider: %v", err)
+	}
+	defer provider.Close()
+
+	// Create a test file
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test data"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Verify file is accessible before blocking
+	if _, err := os.ReadFile(testFile); err != nil {
+		t.Fatalf("Initial file access failed: %v", err)
+	}
+
+	currentPID := uint32(os.Getpid())
+
+	// Block the current PID
+	if err := provider.BlockPID(currentPID); err != nil {
+		t.Fatalf("Failed to block PID: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify file access is denied
+	_, err = os.ReadFile(testFile)
+	if err == nil {
+		t.Skip("Skipping unblock test - LSM BPF may not be active (blocking had no effect)")
+	}
+	t.Logf("File access correctly blocked: %v", err)
+
+	// Unblock the current PID
+	if err := provider.UnblockPID(currentPID); err != nil {
+		t.Fatalf("Failed to unblock PID: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify file access is restored
+	if _, err := os.ReadFile(testFile); err != nil {
+		t.Fatalf("File access should be restored after unblock, but got: %v", err)
+	}
+	t.Log("Successfully verified that unblocking restores file access!")
+}
+
 // nullTerminatedString converts a null-terminated byte array to a string
 func nullTerminatedString(b []byte) string {
 	for i, c := range b {

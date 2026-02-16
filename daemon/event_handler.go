@@ -139,6 +139,24 @@ func (h *EventHandler) IsPIDBlocked(pid uint32) bool {
 	return h.blockedPIDs[pid]
 }
 
+// UnblockPID removes a PID from the blocked list and resets its violation count
+func (h *EventHandler) UnblockPID(pid uint32) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if !h.blockedPIDs[pid] {
+		return fmt.Errorf("PID %d is not blocked", pid)
+	}
+
+	if err := h.provider.UnblockPID(pid); err != nil {
+		return fmt.Errorf("failed to unblock PID in kernel: %w", err)
+	}
+
+	delete(h.blockedPIDs, pid)
+	delete(h.violationCounts, pid)
+	return nil
+}
+
 // GetBlockedPIDs returns a slice of all blocked PIDs
 func (h *EventHandler) GetBlockedPIDs() []uint32 {
 	h.mu.RLock()
