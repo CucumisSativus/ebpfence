@@ -18,6 +18,9 @@ type EBPFProvider interface {
 	// BlockPID adds a PID to the blocked list
 	BlockPID(pid uint32) error
 
+	// UnblockPID removes a PID from the blocked list
+	UnblockPID(pid uint32) error
+
 	// Close cleans up resources
 	Close() error
 }

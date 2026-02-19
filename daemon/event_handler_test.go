@@ -419,6 +419,135 @@ func TestEventHandler_NoViolations(t *testing.T) {
 	}
 }
 
+func TestEventHandler_UnblockPID(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create events that will block PID 1234 (threshold=2)
+	events := []*Event{
+		CreateMockEvent(1234, 1000, "testproc", "/etc/passwd"),
+		CreateMockEvent(1234, 1000, "testproc", "/etc/shadow"),
+	}
+
+	provider := NewMockEBPFProvider(ctx, events)
+	defer provider.Close()
+
+	handler := NewEventHandler(provider, EventHandlerConfig{
+		DisallowedPatterns: []string{"/etc/*"},
+		Threshold:          2,
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- handler.Run(ctx)
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify PID is blocked
+	if !handler.IsPIDBlocked(1234) {
+		t.Fatal("expected PID 1234 to be blocked")
+	}
+	if !provider.IsBlocked(1234) {
+		t.Fatal("expected PID 1234 to be blocked in provider")
+	}
+
+	// Unblock the PID
+	if err := handler.UnblockPID(1234); err != nil {
+		t.Fatalf("UnblockPID: %v", err)
+	}
+
+	// Verify PID is no longer blocked
+	if handler.IsPIDBlocked(1234) {
+		t.Error("expected PID 1234 to not be blocked after unblock")
+	}
+	if provider.IsBlocked(1234) {
+		t.Error("expected PID 1234 to not be blocked in provider after unblock")
+	}
+
+	// Verify violation count was reset
+	if handler.GetViolationCountForPID(1234) != 0 {
+		t.Errorf("expected violation count 0 after unblock, got %d", handler.GetViolationCountForPID(1234))
+	}
+
+	cancel()
+	<-done
+}
+
+func TestEventHandler_UnblockNonBlockedPID(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	provider := NewMockEBPFProvider(ctx, []*Event{})
+	defer provider.Close()
+
+	handler := NewEventHandler(provider, EventHandlerConfig{
+		DisallowedPatterns: []string{"/etc/*"},
+		Threshold:          2,
+	})
+
+	err := handler.UnblockPID(9999)
+	if err == nil {
+		t.Fatal("expected error when unblocking non-blocked PID")
+	}
+}
+
+func TestEventHandler_PartialUnblock(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Block two PIDs
+	events := []*Event{
+		CreateMockEvent(1000, 1000, "proc1", "/etc/passwd"),
+		CreateMockEvent(1000, 1000, "proc1", "/etc/shadow"),
+		CreateMockEvent(2000, 1000, "proc2", "/etc/passwd"),
+		CreateMockEvent(2000, 1000, "proc2", "/etc/shadow"),
+	}
+
+	provider := NewMockEBPFProvider(ctx, events)
+	defer provider.Close()
+
+	handler := NewEventHandler(provider, EventHandlerConfig{
+		DisallowedPatterns: []string{"/etc/*"},
+		Threshold:          2,
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- handler.Run(ctx)
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	// Both should be blocked
+	if !handler.IsPIDBlocked(1000) || !handler.IsPIDBlocked(2000) {
+		t.Fatal("expected both PIDs to be blocked")
+	}
+
+	// Unblock only PID 1000
+	if err := handler.UnblockPID(1000); err != nil {
+		t.Fatalf("UnblockPID: %v", err)
+	}
+
+	// PID 1000 should be unblocked, PID 2000 should remain blocked
+	if handler.IsPIDBlocked(1000) {
+		t.Error("expected PID 1000 to be unblocked")
+	}
+	if !handler.IsPIDBlocked(2000) {
+		t.Error("expected PID 2000 to still be blocked")
+	}
+	if !provider.IsBlocked(2000) {
+		t.Error("expected PID 2000 to still be blocked in provider")
+	}
+
+	// Only PID 2000 should be in the blocked list
+	blockedPIDs := handler.GetBlockedPIDs()
+	if len(blockedPIDs) != 1 || blockedPIDs[0] != 2000 {
+		t.Errorf("expected only PID 2000 in blocked list, got %v", blockedPIDs)
+	}
+
+	cancel()
+	<-done
+}
+
 func TestEventHandler_EmptyEventStream(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

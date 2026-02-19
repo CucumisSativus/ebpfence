@@ -6,6 +6,7 @@ option go_package = "ebpfence/proto";
 
 service EBPFence {
   rpc ListBlockedPIDs(ListBlockedPIDsRequest) returns (ListBlockedPIDsResponse);
+  rpc UnblockPID(UnblockPIDRequest) returns (UnblockPIDResponse);
 }
 
 message ListBlockedPIDsRequest {}
@@ -18,3 +19,9 @@ message BlockedPID {
 message ListBlockedPIDsResponse {
   repeated BlockedPID blocked_pids = 1;
 }
+
+message UnblockPIDRequest {
+  uint32 pid = 1;
+}
+
+message UnblockPIDResponse {}

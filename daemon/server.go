@@ -10,6 +10,8 @@ import (
 	pb "ebpfence/proto"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Server wraps a gRPC server that exposes the EventHandler state.
@@ -40,6 +42,17 @@ func (s *Server) ListBlockedPIDs(_ context.Context, _ *pb.ListBlockedPIDsRequest
 		})
 	}
 	return resp, nil
+}
+
+// UnblockPID implements the EBPFence.UnblockPID RPC.
+func (s *Server) UnblockPID(_ context.Context, req *pb.UnblockPIDRequest) (*pb.UnblockPIDResponse, error) {
+	if req.Pid == 0 {
+		return nil, status.Error(codes.InvalidArgument, "pid must be greater than 0")
+	}
+	if err := s.handler.UnblockPID(req.Pid); err != nil {
+		return nil, status.Errorf(codes.NotFound, "failed to unblock PID %d: %v", req.Pid, err)
+	}
+	return &pb.UnblockPIDResponse{}, nil
 }
 
 // Start begins listening on the given Unix socket path.

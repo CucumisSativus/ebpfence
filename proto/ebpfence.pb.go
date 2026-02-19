@@ -153,6 +153,86 @@ func (x *ListBlockedPIDsResponse) GetBlockedPids() []*BlockedPID {
 	return nil
 }
 
+type UnblockPIDRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Pid           uint32                 `protobuf:"varint,1,opt,name=pid,proto3" json:"pid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnblockPIDRequest) Reset() {
+	*x = UnblockPIDRequest{}
+	mi := &file_ebpfence_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnblockPIDRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnblockPIDRequest) ProtoMessage() {}
+
+func (x *UnblockPIDRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ebpfence_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnblockPIDRequest.ProtoReflect.Descriptor instead.
+func (*UnblockPIDRequest) Descriptor() ([]byte, []int) {
+	return file_ebpfence_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *UnblockPIDRequest) GetPid() uint32 {
+	if x != nil {
+		return x.Pid
+	}
+	return 0
+}
+
+type UnblockPIDResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnblockPIDResponse) Reset() {
+	*x = UnblockPIDResponse{}
+	mi := &file_ebpfence_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnblockPIDResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnblockPIDResponse) ProtoMessage() {}
+
+func (x *UnblockPIDResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ebpfence_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnblockPIDResponse.ProtoReflect.Descriptor instead.
+func (*UnblockPIDResponse) Descriptor() ([]byte, []int) {
+	return file_ebpfence_proto_rawDescGZIP(), []int{4}
+}
+
 var File_ebpfence_proto protoreflect.FileDescriptor
 
 const file_ebpfence_proto_rawDesc = "" +
@@ -164,9 +244,14 @@ const file_ebpfence_proto_rawDesc = "" +
 	"\x03pid\x18\x01 \x01(\rR\x03pid\x12'\n" +
 	"\x0fviolation_count\x18\x02 \x01(\rR\x0eviolationCount\"R\n" +
 	"\x17ListBlockedPIDsResponse\x127\n" +
-	"\fblocked_pids\x18\x01 \x03(\v2\x14.ebpfence.BlockedPIDR\vblockedPids2b\n" +
+	"\fblocked_pids\x18\x01 \x03(\v2\x14.ebpfence.BlockedPIDR\vblockedPids\"%\n" +
+	"\x11UnblockPIDRequest\x12\x10\n" +
+	"\x03pid\x18\x01 \x01(\rR\x03pid\"\x14\n" +
+	"\x12UnblockPIDResponse2\xab\x01\n" +
 	"\bEBPFence\x12V\n" +
-	"\x0fListBlockedPIDs\x12 .ebpfence.ListBlockedPIDsRequest\x1a!.ebpfence.ListBlockedPIDsResponseB\x10Z\x0eebpfence/protob\x06proto3"
+	"\x0fListBlockedPIDs\x12 .ebpfence.ListBlockedPIDsRequest\x1a!.ebpfence.ListBlockedPIDsResponse\x12G\n" +
+	"\n" +
+	"UnblockPID\x12\x1b.ebpfence.UnblockPIDRequest\x1a\x1c.ebpfence.UnblockPIDResponseB\x10Z\x0eebpfence/protob\x06proto3"
 
 var (
 	file_ebpfence_proto_rawDescOnce sync.Once
@@ -180,18 +265,22 @@ func file_ebpfence_proto_rawDescGZIP() []byte {
 	return file_ebpfence_proto_rawDescData
 }
 
-var file_ebpfence_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_ebpfence_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_ebpfence_proto_goTypes = []any{
 	(*ListBlockedPIDsRequest)(nil),  // 0: ebpfence.ListBlockedPIDsRequest
 	(*BlockedPID)(nil),              // 1: ebpfence.BlockedPID
 	(*ListBlockedPIDsResponse)(nil), // 2: ebpfence.ListBlockedPIDsResponse
+	(*UnblockPIDRequest)(nil),       // 3: ebpfence.UnblockPIDRequest
+	(*UnblockPIDResponse)(nil),      // 4: ebpfence.UnblockPIDResponse
 }
 var file_ebpfence_proto_depIdxs = []int32{
 	1, // 0: ebpfence.ListBlockedPIDsResponse.blocked_pids:type_name -> ebpfence.BlockedPID
 	0, // 1: ebpfence.EBPFence.ListBlockedPIDs:input_type -> ebpfence.ListBlockedPIDsRequest
-	2, // 2: ebpfence.EBPFence.ListBlockedPIDs:output_type -> ebpfence.ListBlockedPIDsResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
+	3, // 2: ebpfence.EBPFence.UnblockPID:input_type -> ebpfence.UnblockPIDRequest
+	2, // 3: ebpfence.EBPFence.ListBlockedPIDs:output_type -> ebpfence.ListBlockedPIDsResponse
+	4, // 4: ebpfence.EBPFence.UnblockPID:output_type -> ebpfence.UnblockPIDResponse
+	3, // [3:5] is the sub-list for method output_type
+	1, // [1:3] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -208,7 +297,7 @@ func file_ebpfence_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ebpfence_proto_rawDesc), len(file_ebpfence_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

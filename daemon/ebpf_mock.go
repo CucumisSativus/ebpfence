@@ -28,27 +28,30 @@ func NewMockEBPFProvider(ctx context.Context, events []*Event) *MockEBPFProvider
 // ReadEvent returns the next event from the predefined list
 func (m *MockEBPFProvider) ReadEvent() (*Event, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	if m.closed {
+		m.mu.Unlock()
 		return nil, fmt.Errorf("provider is closed")
 	}
 
 	// Check if context is cancelled
 	select {
 	case <-m.ctx.Done():
+		m.mu.Unlock()
 		return nil, context.Canceled
 	default:
 	}
 
 	if m.currentIndex >= len(m.events) {
-		// No more events, wait for context cancellation
+		// Release lock before blocking wait so other methods can proceed.
+		m.mu.Unlock()
 		<-m.ctx.Done()
 		return nil, context.Canceled
 	}
 
 	event := m.events[m.currentIndex]
 	m.currentIndex++
+	m.mu.Unlock()
 	return event, nil
 }
 
@@ -62,6 +65,19 @@ func (m *MockEBPFProvider) BlockPID(pid uint32) error {
 	}
 
 	m.blockedPIDs[pid] = true
+	return nil
+}
+
+// UnblockPID removes a PID from the blocked list
+func (m *MockEBPFProvider) UnblockPID(pid uint32) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.closed {
+		return fmt.Errorf("provider is closed")
+	}
+
+	delete(m.blockedPIDs, pid)
 	return nil
 }
 
