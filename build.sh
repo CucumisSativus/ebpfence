@@ -3,6 +3,10 @@ set -e
 
 echo "Building ebpfence..."
 
+# Install Go tool dependencies declared in go.mod
+echo "Installing Go tools..."
+go install tool
+
 # Generate protobuf Go code
 echo "Generating protobuf code..."
 go generate ./proto/

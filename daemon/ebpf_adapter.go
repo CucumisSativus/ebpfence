@@ -5,12 +5,29 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 )
+
+// checkLSMBPFEnabled verifies that the kernel was booted with LSM BPF support enabled.
+// Without it, the LSM hook will never fire and no events will be received.
+func checkLSMBPFEnabled() error {
+	data, err := os.ReadFile("/sys/kernel/security/lsm")
+	if err != nil {
+		return fmt.Errorf("cannot read /sys/kernel/security/lsm: %w", err)
+	}
+	for _, module := range strings.Split(strings.TrimSpace(string(data)), ",") {
+		if module == "bpf" {
+			return nil
+		}
+	}
+	return fmt.Errorf("LSM BPF is not enabled (current LSM list: %q); reboot with lsm=...,bpf kernel parameter", strings.TrimSpace(string(data)))
+}
 
 // RealEBPFProvider is the production implementation of EBPFProvider
 type RealEBPFProvider struct {
@@ -23,6 +40,10 @@ type RealEBPFProvider struct {
 
 // NewRealEBPFProvider creates and initializes a new RealEBPFProvider
 func NewRealEBPFProvider() (*RealEBPFProvider, error) {
+	if err := checkLSMBPFEnabled(); err != nil {
+		return nil, err
+	}
+
 	provider := &RealEBPFProvider{
 		objs: &BpfObjects{},
 	}

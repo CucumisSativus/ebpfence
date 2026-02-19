@@ -12,24 +12,26 @@ import (
 
 // checkIntegrationTestRequirements checks if we can run integration tests
 func checkIntegrationTestRequirements(t *testing.T) {
+	t.Helper()
+
 	// Check if running as root
 	if os.Geteuid() != 0 {
-		t.Skip("Integration tests require root privileges (run with sudo)")
+		t.Fatal("Integration tests require root privileges (run with sudo)")
 	}
 
-	// Check if kernel supports eBPF LSM
-	if _, err := os.Stat("/sys/kernel/security/lsm"); err != nil {
-		t.Skip("Kernel LSM support not available")
+	// Check if BPF LSM is enabled
+	if err := checkLSMBPFEnabled(); err != nil {
+		t.Fatal(err.Error())
 	}
 
 	// Check if BPF filesystem is mounted
 	if _, err := os.Stat("/sys/fs/bpf"); err != nil {
-		t.Skip("BPF filesystem not mounted")
+		t.Fatal("BPF filesystem not mounted")
 	}
 
 	// Verify BTF is available (required for CO-RE)
 	if _, err := os.Stat("/sys/kernel/btf/vmlinux"); err != nil {
-		t.Skip("Kernel BTF not available (required for CO-RE eBPF)")
+		t.Fatal("Kernel BTF not available (required for CO-RE eBPF)")
 	}
 }
 
@@ -171,9 +173,7 @@ func TestIntegration_BlockingFunctionality(t *testing.T) {
 	_, err = os.ReadFile(testFile)
 
 	if err == nil {
-		t.Log("Note: File access was not blocked. This may be expected depending on kernel LSM configuration.")
-		t.Log("The LSM hook requires 'bpf' to be in the LSM list at boot time.")
-		t.Skip("Skipping blocking verification - LSM BPF may not be active")
+		t.Fatal("File access was not blocked after BlockPID — LSM hook is not enforcing. Verify the kernel was booted with lsm=...,bpf")
 	}
 
 	// If we got an error, verify it's a permission error
@@ -321,7 +321,7 @@ func TestIntegration_UnblockFunctionality(t *testing.T) {
 	// Verify file access is denied
 	_, err = os.ReadFile(testFile)
 	if err == nil {
-		t.Skip("Skipping unblock test - LSM BPF may not be active (blocking had no effect)")
+		t.Fatal("File access was not blocked after BlockPID — LSM hook is not enforcing. Verify the kernel was booted with lsm=...,bpf")
 	}
 	t.Logf("File access correctly blocked: %v", err)
 
