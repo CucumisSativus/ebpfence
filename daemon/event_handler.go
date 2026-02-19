@@ -154,6 +154,7 @@ func (h *EventHandler) UnblockPID(pid uint32) error {
 
 	delete(h.blockedPIDs, pid)
 	delete(h.violationCounts, pid)
+	fmt.Printf("\n*** PID %d has been UNBLOCKED and can open files again. ***\n\n", pid)
 	return nil
 }
 
