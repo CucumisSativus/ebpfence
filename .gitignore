@@ -3,3 +3,4 @@ daemon/bpf_bpfeb.*
 daemon/bpf_bpfel.*
 ebpfence-daemon
 ebpfence-client
+.direnv/
