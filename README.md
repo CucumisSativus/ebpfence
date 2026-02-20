@@ -20,6 +20,43 @@ eBPFence uses a single sleepable LSM (Linux Security Module) hook to:
 
 When a process opens a file, the LSM hook emits an event to userspace via the ring buffer. Userspace pattern-matches the filename and increments a violation counter if it matches a disallowed pattern. Once the threshold is reached, the process PID is added to a BPF hash map. On subsequent file operations, the LSM hook checks this map and denies access for blocked PIDs.
 
+## Development Environment (Nix)
+
+If you have [Nix](https://nixos.org/download/) installed, you can get a fully reproducible development shell with all required tools without installing anything else manually.
+
+### Prerequisites
+
+- Nix with flakes support enabled. Add the following to `~/.config/nix/nix.conf` (or `/etc/nix/nix.conf`):
+  ```
+  experimental-features = nix-command flakes
+  ```
+
+### Enter the Dev Shell
+
+```bash
+nix develop
+```
+
+This drops you into a shell with Go, clang, LLVM, libbpf, linux headers, protobuf, and bpftools all available. The shell hook will print the versions of the key tools on entry.
+
+### Build Inside the Dev Shell
+
+Once inside `nix develop`, use the normal build commands:
+
+```bash
+go generate ./daemon/
+CGO_ENABLED=0 go build -o ebpfence-daemon ./cmd/daemon/
+CGO_ENABLED=0 go build -o ebpfence-client ./cmd/client/
+```
+
+Or with the build script:
+
+```bash
+./build.sh
+```
+
+---
+
 ## Building
 
 ### Prerequisites

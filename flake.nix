@@ -34,12 +34,21 @@
             protobuf
 
             # Useful eBPF debugging tool
-            bpftool
+            bpftools
           ];
 
           # Point clang at the libbpf and kernel headers provided by Nix
           shellHook = ''
             export CGO_ENABLED=0
+            export PATH="$(go env GOPATH)/bin:$PATH"
+
+            # The Nix clang wrapper injects several hardening flags that are
+            # unsupported for the BPF target used by bpf2go. Strip them so
+            # `go generate ./daemon/` works without errors or warnings.
+            export NIX_HARDENING_ENABLE="''${NIX_HARDENING_ENABLE/zerocallusedregs/}"
+            export NIX_HARDENING_ENABLE="''${NIX_HARDENING_ENABLE/stackprotector/}"
+            export NIX_HARDENING_ENABLE="''${NIX_HARDENING_ENABLE/stackclashprotection/}"
+
             echo "eBPFence dev shell ready."
             echo "  clang:   $(clang --version | head -1)"
             echo "  go:      $(go version)"
