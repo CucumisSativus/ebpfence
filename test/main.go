@@ -4,8 +4,22 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"time"
 )
+
+func tryConnect(addr string) {
+	fmt.Printf("Attempting TCP connection to %s...\n", addr)
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		fmt.Printf("Connection to %s failed: %v\n", addr, err)
+		fmt.Println("This is expected if ebpfence is blocking socket connections!")
+		return
+	}
+	conn.Close()
+	fmt.Printf("Connection to %s succeeded\n", addr)
+}
 
 func main() {
 	fmt.Println("Test program started. PID:", os.Getpid())
@@ -50,7 +64,7 @@ func main() {
 	}
 
 	// Wait for user input before opening next 2 files
-	fmt.Println("\nPress Enter to open next 2 files...")
+	fmt.Println("\nPress Enter to open next 2 files and try network connections...")
 	bufio.NewReader(os.Stdin).ReadBytes('\n')
 
 	// Open third file (should be blocked if in enforce mode)
@@ -73,15 +87,18 @@ func main() {
 	if err != nil {
 		log.Printf("Failed to open file4.txt: %v", err)
 		fmt.Println("This is expected if ebpfence is blocking new file opens!")
-		return
-	}
-	defer file4.Close()
-
-	// Read from fourth file
-	scanner4 := bufio.NewScanner(file4)
-	if scanner4.Scan() {
-		fmt.Printf("Read from file4.txt: %s\n", scanner4.Text())
+	} else {
+		defer file4.Close()
+		scanner4 := bufio.NewScanner(file4)
+		if scanner4.Scan() {
+			fmt.Printf("Read from file4.txt: %s\n", scanner4.Text())
+		}
 	}
 
-	fmt.Println("Test program completed successfully, blocking does not work")
+	// Try network connections (should be blocked if strategy includes block_network or both)
+	fmt.Println()
+	tryConnect("1.1.1.1:80")
+	tryConnect("8.8.8.8:53")
+
+	fmt.Println("\nTest program completed.")
 }
