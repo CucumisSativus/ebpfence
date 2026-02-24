@@ -31,15 +31,17 @@ func checkLSMBPFEnabled() error {
 
 // RealEBPFProvider is the production implementation of EBPFProvider
 type RealEBPFProvider struct {
-	objs      *BpfObjects
-	reader    *ringbuf.Reader
-	lsmLink   link.Link
-	closeOnce sync.Once
-	closeErr  error
+	objs        *BpfObjects
+	reader      *ringbuf.Reader
+	lsmLink     link.Link // file_open hook (may be nil if strategy is block_network)
+	socketLink  link.Link // socket_connect hook (may be nil if strategy is block_files)
+	closeOnce   sync.Once
+	closeErr    error
 }
 
-// NewRealEBPFProvider creates and initializes a new RealEBPFProvider
-func NewRealEBPFProvider() (*RealEBPFProvider, error) {
+// NewRealEBPFProvider creates and initializes a new RealEBPFProvider.
+// The strategy controls which LSM hooks are attached.
+func NewRealEBPFProvider(strategy BlockStrategy) (*RealEBPFProvider, error) {
 	if err := checkLSMBPFEnabled(); err != nil {
 		return nil, err
 	}
@@ -53,15 +55,30 @@ func NewRealEBPFProvider() (*RealEBPFProvider, error) {
 		return nil, fmt.Errorf("load bpf objects: %w", err)
 	}
 
-	// Attach LSM hook for blocking
-	lsmLink, err := link.AttachLSM(link.LSMOptions{Program: provider.objs.DenyFileOpen})
-	if err != nil {
-		provider.objs.Close()
-		return nil, fmt.Errorf("attach LSM hook: %w", err)
+	// Attach file_open LSM hook if strategy includes file blocking
+	if strategy == BlockFiles || strategy == BlockBoth {
+		lsmLink, err := link.AttachLSM(link.LSMOptions{Program: provider.objs.DenyFileOpen})
+		if err != nil {
+			provider.objs.Close()
+			return nil, fmt.Errorf("attach file_open LSM hook: %w", err)
+		}
+		provider.lsmLink = lsmLink
 	}
-	provider.lsmLink = lsmLink
 
-	// Open the ring buffer
+	// Attach socket_connect LSM hook if strategy includes network blocking
+	if strategy == BlockNetwork || strategy == BlockBoth {
+		socketLink, err := link.AttachLSM(link.LSMOptions{Program: provider.objs.DenySocketConnect})
+		if err != nil {
+			if provider.lsmLink != nil {
+				provider.lsmLink.Close()
+			}
+			provider.objs.Close()
+			return nil, fmt.Errorf("attach socket_connect LSM hook: %w", err)
+		}
+		provider.socketLink = socketLink
+	}
+
+	// Open the ring buffer (always needed for event collection)
 	reader, err := ringbuf.NewReader(provider.objs.Events)
 	if err != nil {
 		provider.Close()
@@ -121,7 +138,13 @@ func (p *RealEBPFProvider) Close() error {
 
 		if p.lsmLink != nil {
 			if err := p.lsmLink.Close(); err != nil {
-				errs = append(errs, fmt.Errorf("close lsm link: %w", err))
+				errs = append(errs, fmt.Errorf("close file_open lsm link: %w", err))
+			}
+		}
+
+		if p.socketLink != nil {
+			if err := p.socketLink.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("close socket_connect lsm link: %w", err))
 			}
 		}
 

@@ -14,6 +14,7 @@ func TestLoadConfig(t *testing.T) {
 		wantPatterns  []string
 		wantThreshold uint32
 		wantTargetPID uint32
+		wantStrategy  BlockStrategy
 	}{
 		{
 			name:          "valid config with multiple patterns",
@@ -22,6 +23,7 @@ func TestLoadConfig(t *testing.T) {
 			wantPatterns:  []string{"/etc/passwd", "/etc/shadow", "/var/log/*.log"},
 			wantThreshold: 3,
 			wantTargetPID: 0,
+			wantStrategy:  BlockFiles, // default when omitted
 		},
 		{
 			name:          "valid config with single pattern and target PID",
@@ -30,6 +32,36 @@ func TestLoadConfig(t *testing.T) {
 			wantPatterns:  []string{"/etc/passwd"},
 			wantThreshold: 1,
 			wantTargetPID: 12345,
+			wantStrategy:  BlockFiles, // default when omitted
+		},
+		{
+			name:          "strategy block_files explicit",
+			content:       `{"patterns": ["/etc/passwd"], "threshold": 2, "strategy": "block_files"}`,
+			wantErr:       false,
+			wantPatterns:  []string{"/etc/passwd"},
+			wantThreshold: 2,
+			wantStrategy:  BlockFiles,
+		},
+		{
+			name:          "strategy block_network",
+			content:       `{"patterns": ["/etc/passwd"], "threshold": 2, "strategy": "block_network"}`,
+			wantErr:       false,
+			wantPatterns:  []string{"/etc/passwd"},
+			wantThreshold: 2,
+			wantStrategy:  BlockNetwork,
+		},
+		{
+			name:          "strategy both",
+			content:       `{"patterns": ["/etc/passwd"], "threshold": 2, "strategy": "block_both"}`,
+			wantErr:       false,
+			wantPatterns:  []string{"/etc/passwd"},
+			wantThreshold: 2,
+			wantStrategy:  BlockBoth,
+		},
+		{
+			name:    "invalid strategy",
+			content: `{"patterns": ["/etc/passwd"], "threshold": 2, "strategy": "block_everything"}`,
+			wantErr: true,
 		},
 		{
 			name:    "empty patterns array",
@@ -95,6 +127,10 @@ func TestLoadConfig(t *testing.T) {
 
 			if config.TargetPID != tt.wantTargetPID {
 				t.Errorf("target_pid = %d, want %d", config.TargetPID, tt.wantTargetPID)
+			}
+
+			if tt.wantStrategy != "" && config.Strategy != tt.wantStrategy {
+				t.Errorf("strategy = %q, want %q", config.Strategy, tt.wantStrategy)
 			}
 		})
 	}

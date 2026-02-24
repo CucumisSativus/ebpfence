@@ -27,6 +27,7 @@ func ExampleEventHandler() {
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
 		TargetPID:          0,
+		Strategy:           BlockFiles,
 	}
 
 	handler := NewEventHandler(provider, config)
@@ -51,12 +52,13 @@ func ExampleEventHandler() {
 	// Output:
 	// Disallowed files: [/etc/*]
 	// Threshold: 2 file(s)
+	// Blocking strategy: block_files (blocks: file opens)
 	// Press Ctrl+C to stop
 	//
 	// [VIOLATION 1/2] PID 1234 (myapp) opened disallowed file: /etc/passwd
 	// [VIOLATION 2/2] PID 1234 (myapp) opened disallowed file: /etc/shadow
 	//
-	// *** PID 1234 is now BLOCKED from opening any further files! ***
+	// *** PID 1234 is now BLOCKED from file opens! ***
 	//
 	// Total violations: 2
 	// PID 1234 violations: 2
@@ -84,6 +86,7 @@ func ExampleEventHandler_multipleProcesses() {
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
 		TargetPID:          0,
+		Strategy:           BlockFiles,
 	}
 
 	handler := NewEventHandler(provider, config)
@@ -107,13 +110,14 @@ func ExampleEventHandler_multipleProcesses() {
 	// Output:
 	// Disallowed files: [/etc/*]
 	// Threshold: 2 file(s)
+	// Blocking strategy: block_files (blocks: file opens)
 	// Press Ctrl+C to stop
 	//
 	// [VIOLATION 1/2] PID 1000 (proc1) opened disallowed file: /etc/passwd
 	// [VIOLATION 1/2] PID 2000 (proc2) opened disallowed file: /etc/shadow
 	// [VIOLATION 2/2] PID 1000 (proc1) opened disallowed file: /etc/hosts
 	//
-	// *** PID 1000 is now BLOCKED from opening any further files! ***
+	// *** PID 1000 is now BLOCKED from file opens! ***
 	//
 	// Total violations: 3
 	// PID 1000 violations: 2, blocked: true

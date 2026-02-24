@@ -14,7 +14,8 @@ import (
 type EventHandlerConfig struct {
 	DisallowedPatterns []string
 	Threshold          uint32
-	TargetPID          uint32 // 0 means all PIDs
+	TargetPID          uint32        // 0 means all PIDs
+	Strategy           BlockStrategy // what gets blocked when threshold is reached
 }
 
 // EventHandler manages the core logic of processing events and blocking PIDs
@@ -36,10 +37,23 @@ func NewEventHandler(provider EBPFProvider, config EventHandlerConfig) *EventHan
 	}
 }
 
+// blockingDescription returns a human-readable description of the blocking strategy.
+func blockingDescription(strategy BlockStrategy) string {
+	switch strategy {
+	case BlockNetwork:
+		return "socket connections"
+	case BlockBoth:
+		return "file opens and socket connections"
+	default:
+		return "file opens"
+	}
+}
+
 // Run starts processing events from the ring buffer
 func (h *EventHandler) Run(ctx context.Context) error {
 	fmt.Printf("Disallowed files: %v\n", h.config.DisallowedPatterns)
 	fmt.Printf("Threshold: %d file(s)\n", h.config.Threshold)
+	fmt.Printf("Blocking strategy: %s (blocks: %s)\n", h.config.Strategy, blockingDescription(h.config.Strategy))
 	if h.config.TargetPID != 0 {
 		fmt.Printf("Target PID: %d\n", h.config.TargetPID)
 	}
@@ -101,7 +115,7 @@ func (h *EventHandler) processEvent(event *Event) error {
 		if err := h.provider.BlockPID(event.Pid); err != nil {
 			return fmt.Errorf("failed to block PID: %w", err)
 		}
-		fmt.Printf("\n*** PID %d is now BLOCKED from opening any further files! ***\n\n", event.Pid)
+		fmt.Printf("\n*** PID %d is now BLOCKED from %s! ***\n\n", event.Pid, blockingDescription(h.config.Strategy))
 	}
 
 	return nil
@@ -154,7 +168,7 @@ func (h *EventHandler) UnblockPID(pid uint32) error {
 
 	delete(h.blockedPIDs, pid)
 	delete(h.violationCounts, pid)
-	fmt.Printf("\n*** PID %d has been UNBLOCKED and can open files again. ***\n\n", pid)
+	fmt.Printf("\n*** PID %d has been UNBLOCKED and can resume %s. ***\n\n", pid, blockingDescription(h.config.Strategy))
 	return nil
 }
 

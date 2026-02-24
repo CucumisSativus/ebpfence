@@ -26,6 +26,7 @@ func TestEventHandler_ViolationCounting(t *testing.T) {
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          3,
 		TargetPID:          0, // All PIDs
+		Strategy:           BlockFiles,
 	}
 
 	handler := NewEventHandler(provider, config)
@@ -122,6 +123,7 @@ func TestEventHandler_ThresholdBlocking(t *testing.T) {
 				DisallowedPatterns: tt.disallowedFiles,
 				Threshold:          tt.threshold,
 				TargetPID:          0,
+				Strategy:           BlockFiles,
 			}
 
 			handler := NewEventHandler(provider, config)
@@ -174,6 +176,7 @@ func TestEventHandler_MultipleProcesses(t *testing.T) {
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
 		TargetPID:          0, // Monitor all PIDs
+		Strategy:           BlockFiles,
 	}
 
 	handler := NewEventHandler(provider, config)
@@ -266,6 +269,7 @@ func TestEventHandler_PIDFiltering(t *testing.T) {
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
 		TargetPID:          1000, // Only monitor PID 1000
+		Strategy:           BlockFiles,
 	}
 
 	handler := NewEventHandler(provider, config)
@@ -393,6 +397,7 @@ func TestEventHandler_NoViolations(t *testing.T) {
 		DisallowedPatterns: []string{"/etc/*", "/secret/*"},
 		Threshold:          2,
 		TargetPID:          0,
+		Strategy:           BlockFiles,
 	}
 
 	handler := NewEventHandler(provider, config)
@@ -435,6 +440,7 @@ func TestEventHandler_UnblockPID(t *testing.T) {
 	handler := NewEventHandler(provider, EventHandlerConfig{
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
+		Strategy:           BlockFiles,
 	})
 
 	done := make(chan error, 1)
@@ -483,6 +489,7 @@ func TestEventHandler_UnblockNonBlockedPID(t *testing.T) {
 	handler := NewEventHandler(provider, EventHandlerConfig{
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
+		Strategy:           BlockFiles,
 	})
 
 	err := handler.UnblockPID(9999)
@@ -509,6 +516,7 @@ func TestEventHandler_PartialUnblock(t *testing.T) {
 	handler := NewEventHandler(provider, EventHandlerConfig{
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
+		Strategy:           BlockFiles,
 	})
 
 	done := make(chan error, 1)
@@ -560,6 +568,7 @@ func TestEventHandler_EmptyEventStream(t *testing.T) {
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
 		TargetPID:          0,
+		Strategy:           BlockFiles,
 	}
 
 	handler := NewEventHandler(provider, config)
@@ -579,5 +588,49 @@ func TestEventHandler_EmptyEventStream(t *testing.T) {
 
 	if handler.IsBlocked() {
 		t.Error("handler should not be in blocked state")
+	}
+}
+
+// TestEventHandler_StrategyBlocksAfterThreshold verifies that the handler calls
+// BlockPID regardless of strategy (enforcement is done by the active BPF hooks).
+func TestEventHandler_StrategyBlocksAfterThreshold(t *testing.T) {
+	strategies := []BlockStrategy{BlockFiles, BlockNetwork, BlockBoth}
+
+	for _, strategy := range strategies {
+		t.Run(string(strategy), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			events := []*Event{
+				CreateMockEvent(1234, 1000, "testproc", "/etc/passwd"),
+				CreateMockEvent(1234, 1000, "testproc", "/etc/shadow"),
+			}
+
+			provider := NewMockEBPFProvider(ctx, events)
+			defer provider.Close()
+
+			handler := NewEventHandler(provider, EventHandlerConfig{
+				DisallowedPatterns: []string{"/etc/*"},
+				Threshold:          2,
+				Strategy:           strategy,
+			})
+
+			done := make(chan error, 1)
+			go func() {
+				done <- handler.Run(ctx)
+			}()
+			time.Sleep(100 * time.Millisecond)
+			cancel()
+			<-done
+
+			// Regardless of strategy, BlockPID must be called on the provider
+			// so the active BPF hooks can enforce it.
+			if !handler.IsPIDBlocked(1234) {
+				t.Errorf("strategy %q: expected PID 1234 to be blocked in handler", strategy)
+			}
+			if !provider.IsBlocked(1234) {
+				t.Errorf("strategy %q: expected PID 1234 to be blocked in provider", strategy)
+			}
+		})
 	}
 }
