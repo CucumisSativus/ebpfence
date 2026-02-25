@@ -90,7 +90,12 @@ func TestServer_ListBlockedPIDs_WithBlocked(t *testing.T) {
 	go func() {
 		done <- handler.Run(ctx)
 	}()
-	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 
 	client, cleanup := startTestServer(t, handler)
 	defer cleanup()
@@ -142,7 +147,12 @@ func TestServer_ListBlockedPIDs_MultipleBlocked(t *testing.T) {
 	go func() {
 		done <- handler.Run(ctx)
 	}()
-	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 
 	client, cleanup := startTestServer(t, handler)
 	defer cleanup()
@@ -200,7 +210,12 @@ func TestServer_UnblockPID_Success(t *testing.T) {
 	go func() {
 		done <- handler.Run(ctx)
 	}()
-	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 
 	client, cleanup := startTestServer(t, handler)
 	defer cleanup()

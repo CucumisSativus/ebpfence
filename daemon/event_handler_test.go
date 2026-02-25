@@ -37,8 +37,12 @@ func TestEventHandler_ViolationCounting(t *testing.T) {
 		done <- handler.Run(ctx)
 	}()
 
-	// Wait a bit for events to be processed
-	time.Sleep(100 * time.Millisecond)
+	// Wait for all events to be processed before asserting.
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 	cancel()
 	err := <-done
 	if err != nil {
@@ -135,7 +139,11 @@ func TestEventHandler_ThresholdBlocking(t *testing.T) {
 				done <- handler.Run(ctx)
 			}()
 
-			time.Sleep(100 * time.Millisecond)
+			select {
+			case <-provider.EventsDrained():
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for events to be processed")
+			}
 			cancel()
 			<-done
 
@@ -188,7 +196,11 @@ func TestEventHandler_MultipleProcesses(t *testing.T) {
 		done <- handler.Run(ctx)
 	}()
 
-	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 	cancel()
 	<-done
 
@@ -281,7 +293,11 @@ func TestEventHandler_PIDFiltering(t *testing.T) {
 		done <- handler.Run(ctx)
 	}()
 
-	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 	cancel()
 	err := <-done
 	if err != nil {
@@ -411,7 +427,11 @@ func TestEventHandler_NoViolations(t *testing.T) {
 		done <- handler.Run(ctx)
 	}()
 
-	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 	cancel()
 	<-done
 
@@ -451,7 +471,12 @@ func TestEventHandler_UnblockPID(t *testing.T) {
 	go func() {
 		done <- handler.Run(ctx)
 	}()
-	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 
 	// Verify PID is blocked
 	if !handler.IsPIDBlocked(1234) {
@@ -527,7 +552,12 @@ func TestEventHandler_PartialUnblock(t *testing.T) {
 	go func() {
 		done <- handler.Run(ctx)
 	}()
-	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 
 	// Both should be blocked
 	if !handler.IsPIDBlocked(1000) || !handler.IsPIDBlocked(2000) {
@@ -582,7 +612,11 @@ func TestEventHandler_EmptyEventStream(t *testing.T) {
 		done <- handler.Run(ctx)
 	}()
 
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 	cancel()
 	<-done
 
@@ -623,7 +657,12 @@ func TestEventHandler_StrategyBlocksAfterThreshold(t *testing.T) {
 			go func() {
 				done <- handler.Run(ctx)
 			}()
-			time.Sleep(100 * time.Millisecond)
+
+			select {
+			case <-provider.EventsDrained():
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for events to be processed")
+			}
 			cancel()
 			<-done
 
