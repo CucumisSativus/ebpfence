@@ -14,6 +14,8 @@ type MockEBPFProvider struct {
 	blockedPIDs  map[uint32]bool
 	closed       bool
 	ctx          context.Context
+	drained      chan struct{} // closed when all events have been read
+	drainOnce    sync.Once
 }
 
 // NewMockEBPFProvider creates a new mock provider with predefined events
@@ -22,7 +24,14 @@ func NewMockEBPFProvider(ctx context.Context, events []*Event) *MockEBPFProvider
 		events:      events,
 		blockedPIDs: make(map[uint32]bool),
 		ctx:         ctx,
+		drained:     make(chan struct{}),
 	}
+}
+
+// EventsDrained returns a channel that is closed when all queued events have been read.
+// Tests should wait on this channel instead of using time.Sleep to avoid flakiness.
+func (m *MockEBPFProvider) EventsDrained() <-chan struct{} {
+	return m.drained
 }
 
 // ReadEvent returns the next event from the predefined list
@@ -43,6 +52,8 @@ func (m *MockEBPFProvider) ReadEvent() (*Event, error) {
 	}
 
 	if m.currentIndex >= len(m.events) {
+		// All events consumed; signal any waiters on EventsDrained.
+		m.drainOnce.Do(func() { close(m.drained) })
 		// Release lock before blocking wait so other methods can proceed.
 		m.mu.Unlock()
 		<-m.ctx.Done()

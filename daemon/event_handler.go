@@ -51,6 +51,13 @@ func blockingDescription(strategy BlockStrategy) string {
 
 // Run starts processing events from the ring buffer
 func (h *EventHandler) Run(ctx context.Context) error {
+	if len(h.config.DisallowedPatterns) == 0 {
+		return fmt.Errorf("no disallowed patterns configured")
+	}
+	if h.config.Threshold == 0 {
+		return fmt.Errorf("threshold must be greater than 0")
+	}
+
 	fmt.Printf("Disallowed files: %v\n", h.config.DisallowedPatterns)
 	fmt.Printf("Threshold: %d file(s)\n", h.config.Threshold)
 	fmt.Printf("Blocking strategy: %s (blocks: %s)\n", h.config.Strategy, blockingDescription(h.config.Strategy))
@@ -111,10 +118,10 @@ func (h *EventHandler) processEvent(event *Event) error {
 
 	// Check if this PID has reached the threshold and is not already blocked
 	if pidViolations >= h.config.Threshold && !h.blockedPIDs[event.Pid] {
-		h.blockedPIDs[event.Pid] = true
 		if err := h.provider.BlockPID(event.Pid); err != nil {
 			return fmt.Errorf("failed to block PID: %w", err)
 		}
+		h.blockedPIDs[event.Pid] = true
 		fmt.Printf("\n*** PID %d is now BLOCKED from %s! ***\n\n", event.Pid, blockingDescription(h.config.Strategy))
 	}
 

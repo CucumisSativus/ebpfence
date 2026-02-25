@@ -129,7 +129,7 @@ func TestLoadConfig(t *testing.T) {
 				t.Errorf("target_pid = %d, want %d", config.TargetPID, tt.wantTargetPID)
 			}
 
-			if tt.wantStrategy != "" && config.Strategy != tt.wantStrategy {
+			if config.Strategy != tt.wantStrategy {
 				t.Errorf("strategy = %q, want %q", config.Strategy, tt.wantStrategy)
 			}
 		})

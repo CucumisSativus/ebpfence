@@ -3,7 +3,6 @@ package daemon
 import (
 	"context"
 	"fmt"
-	"time"
 )
 
 // ExampleEventHandler demonstrates how to use the mock provider for testing
@@ -38,8 +37,8 @@ func ExampleEventHandler() {
 		done <- handler.Run(ctx)
 	}()
 
-	// Let it process events
-	time.Sleep(50 * time.Millisecond)
+	// Wait for all events to be processed before cancelling.
+	<-provider.EventsDrained()
 	cancel()
 	<-done
 
@@ -96,7 +95,7 @@ func ExampleEventHandler_multipleProcesses() {
 		done <- handler.Run(ctx)
 	}()
 
-	time.Sleep(50 * time.Millisecond)
+	<-provider.EventsDrained()
 	cancel()
 	<-done
 
