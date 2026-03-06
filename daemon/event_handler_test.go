@@ -39,8 +39,10 @@ func TestEventHandler_ViolationCounting(t *testing.T) {
 	// Wait a bit for events to be processed
 	time.Sleep(100 * time.Millisecond)
 	cancel()
-	<-done
-
+	err := <-done
+	if err != nil {
+		t.Fatalf("handler.Run: %v", err)
+	}
 	// Check violation count
 	if handler.GetViolationCount() != 3 {
 		t.Errorf("expected 3 violations, got %d", handler.GetViolationCount())
@@ -67,16 +69,16 @@ func TestEventHandler_ViolationCounting(t *testing.T) {
 
 func TestEventHandler_ThresholdBlocking(t *testing.T) {
 	tests := []struct {
-		name              string
-		threshold         uint32
-		disallowedFiles   []string
-		events            []*Event
+		name               string
+		threshold          uint32
+		disallowedFiles    []string
+		events             []*Event
 		expectedViolations uint32
-		shouldBlock       bool
+		shouldBlock        bool
 	}{
 		{
-			name:      "block after 2 violations",
-			threshold: 2,
+			name:            "block after 2 violations",
+			threshold:       2,
 			disallowedFiles: []string{"/secret/*"},
 			events: []*Event{
 				CreateMockEvent(5678, 1000, "app", "/secret/file1.txt"),
@@ -84,11 +86,11 @@ func TestEventHandler_ThresholdBlocking(t *testing.T) {
 				CreateMockEvent(5678, 1000, "app", "/secret/file2.txt"),
 			},
 			expectedViolations: 2,
-			shouldBlock:       true,
+			shouldBlock:        true,
 		},
 		{
-			name:      "no block when threshold not reached",
-			threshold: 5,
+			name:            "no block when threshold not reached",
+			threshold:       5,
 			disallowedFiles: []string{"/secret/*"},
 			events: []*Event{
 				CreateMockEvent(5678, 1000, "app", "/secret/file1.txt"),
@@ -96,17 +98,17 @@ func TestEventHandler_ThresholdBlocking(t *testing.T) {
 				CreateMockEvent(5678, 1000, "app", "/public/file.txt"),
 			},
 			expectedViolations: 2,
-			shouldBlock:       false,
+			shouldBlock:        false,
 		},
 		{
-			name:      "exact match blocking",
-			threshold: 1,
+			name:            "exact match blocking",
+			threshold:       1,
 			disallowedFiles: []string{"/etc/passwd"},
 			events: []*Event{
 				CreateMockEvent(9999, 1000, "hacker", "/etc/passwd"),
 			},
 			expectedViolations: 1,
-			shouldBlock:       true,
+			shouldBlock:        true,
 		},
 	}
 
@@ -277,8 +279,10 @@ func TestEventHandler_PIDFiltering(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
-	<-done
-
+	err := <-done
+	if err != nil {
+		t.Fatalf("handler.Run: %v", err)
+	}
 	// Should only count violations from PID 1000 (2 violations)
 	if handler.GetViolationCount() != 2 {
 		t.Errorf("expected 2 violations from PID 1000, got %d", handler.GetViolationCount())
