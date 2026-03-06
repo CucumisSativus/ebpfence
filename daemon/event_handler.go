@@ -78,6 +78,9 @@ func (h *EventHandler) Run(ctx context.Context) error {
 		event, err := h.provider.ReadEvent()
 		if err != nil {
 			if ctx.Err() != nil {
+				if ctx.Err() == context.Canceled {
+					return nil
+				}
 				return ctx.Err()
 			}
 			log.Printf("reading event: %v", err)
