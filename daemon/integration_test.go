@@ -39,7 +39,7 @@ func checkIntegrationTestRequirements(t *testing.T) {
 func TestIntegration_RealEBPFProvider_LoadAndAttach(t *testing.T) {
 	checkIntegrationTestRequirements(t)
 
-	provider, err := NewRealEBPFProvider()
+	provider, err := NewRealEBPFProvider(BlockFiles)
 	if err != nil {
 		t.Fatalf("Failed to create eBPF provider: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestIntegration_RealEBPFProvider_LoadAndAttach(t *testing.T) {
 func TestIntegration_EventCollection(t *testing.T) {
 	checkIntegrationTestRequirements(t)
 
-	provider, err := NewRealEBPFProvider()
+	provider, err := NewRealEBPFProvider(BlockFiles)
 	if err != nil {
 		t.Fatalf("Failed to create eBPF provider: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestIntegration_EventCollection(t *testing.T) {
 func TestIntegration_BlockingFunctionality(t *testing.T) {
 	checkIntegrationTestRequirements(t)
 
-	provider, err := NewRealEBPFProvider()
+	provider, err := NewRealEBPFProvider(BlockFiles)
 	if err != nil {
 		t.Fatalf("Failed to create eBPF provider: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	}
 
 	// Create provider and handler
-	provider, err := NewRealEBPFProvider()
+	provider, err := NewRealEBPFProvider(BlockFiles)
 	if err != nil {
 		t.Fatalf("Failed to create eBPF provider: %v", err)
 	}
@@ -218,6 +218,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 		DisallowedPatterns: []string{secretDir + "/*"},
 		Threshold:          2,
 		TargetPID:          0, // Monitor all PIDs
+		Strategy:           BlockFiles,
 	}
 
 	handler := NewEventHandler(provider, handlerConfig)
@@ -292,7 +293,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 func TestIntegration_UnblockFunctionality(t *testing.T) {
 	checkIntegrationTestRequirements(t)
 
-	provider, err := NewRealEBPFProvider()
+	provider, err := NewRealEBPFProvider(BlockFiles)
 	if err != nil {
 		t.Fatalf("Failed to create eBPF provider: %v", err)
 	}

@@ -33,7 +33,7 @@ struct {
 } events SEC(".maps");
 
 SEC("lsm.s/file_open") // sleepable hook variant (required for bpf_d_path)
-int BPF_PROG(deny_file_open, struct file *file, const struct cred *cred){
+int BPF_PROG(deny_file_open, struct file *file, const struct cred *cred) {
     __u64 pid_tgid = bpf_get_current_pid_tgid();
     __u32 pid = pid_tgid >> 32;
     __u8 *blocked;
@@ -68,6 +68,21 @@ int BPF_PROG(deny_file_open, struct file *file, const struct cred *cred){
     e->flags = BPF_CORE_READ(file, f_flags);
 
     bpf_ringbuf_submit(e, 0);
+
+    return 0;
+}
+
+SEC("lsm/socket_connect") // non-sleepable (no bpf_d_path needed)
+int BPF_PROG(deny_socket_connect, struct socket *sock, struct sockaddr *address, int addrlen) {
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    __u32 pid = pid_tgid >> 32;
+    __u8 *blocked;
+
+    blocked = bpf_map_lookup_elem(&blocked_pids, &pid);
+    if (blocked) {
+        bpf_printk("BLOCKED: PID %d denied socket connect", pid);
+        return -EPERM;
+    }
 
     return 0;
 }

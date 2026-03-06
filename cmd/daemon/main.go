@@ -39,7 +39,7 @@ func main() {
 	}()
 
 	// Create the eBPF provider
-	provider, err := daemon.NewRealEBPFProvider()
+	provider, err := daemon.NewRealEBPFProvider(cfg.Strategy)
 	if err != nil {
 		log.Fatalf("failed to create eBPF provider: %v", err)
 	}
@@ -50,6 +50,7 @@ func main() {
 		DisallowedPatterns: cfg.Patterns,
 		Threshold:          cfg.Threshold,
 		TargetPID:          cfg.TargetPID,
+		Strategy:           cfg.Strategy,
 	}
 	handler := daemon.NewEventHandler(provider, handlerConfig)
 

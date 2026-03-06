@@ -51,6 +51,7 @@ func TestServer_ListBlockedPIDs_Empty(t *testing.T) {
 	handler := NewEventHandler(provider, EventHandlerConfig{
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
+		Strategy:           BlockFiles,
 	})
 
 	client, cleanup := startTestServer(t, handler)
@@ -81,6 +82,7 @@ func TestServer_ListBlockedPIDs_WithBlocked(t *testing.T) {
 	handler := NewEventHandler(provider, EventHandlerConfig{
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
+		Strategy:           BlockFiles,
 	})
 
 	// Run handler to process events.
@@ -88,7 +90,12 @@ func TestServer_ListBlockedPIDs_WithBlocked(t *testing.T) {
 	go func() {
 		done <- handler.Run(ctx)
 	}()
-	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 
 	client, cleanup := startTestServer(t, handler)
 	defer cleanup()
@@ -133,13 +140,19 @@ func TestServer_ListBlockedPIDs_MultipleBlocked(t *testing.T) {
 	handler := NewEventHandler(provider, EventHandlerConfig{
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
+		Strategy:           BlockFiles,
 	})
 
 	done := make(chan error, 1)
 	go func() {
 		done <- handler.Run(ctx)
 	}()
-	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 
 	client, cleanup := startTestServer(t, handler)
 	defer cleanup()
@@ -189,6 +202,7 @@ func TestServer_UnblockPID_Success(t *testing.T) {
 	handler := NewEventHandler(provider, EventHandlerConfig{
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
+		Strategy:           BlockFiles,
 	})
 
 	// Process events to block PID 1000.
@@ -196,7 +210,12 @@ func TestServer_UnblockPID_Success(t *testing.T) {
 	go func() {
 		done <- handler.Run(ctx)
 	}()
-	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case <-provider.EventsDrained():
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for events to be processed")
+	}
 
 	client, cleanup := startTestServer(t, handler)
 	defer cleanup()
@@ -239,6 +258,7 @@ func TestServer_UnblockPID_NotBlocked(t *testing.T) {
 	handler := NewEventHandler(provider, EventHandlerConfig{
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
+		Strategy:           BlockFiles,
 	})
 
 	client, cleanup := startTestServer(t, handler)
@@ -260,6 +280,7 @@ func TestServer_UnblockPID_InvalidPID(t *testing.T) {
 	handler := NewEventHandler(provider, EventHandlerConfig{
 		DisallowedPatterns: []string{"/etc/*"},
 		Threshold:          2,
+		Strategy:           BlockFiles,
 	})
 
 	client, cleanup := startTestServer(t, handler)
