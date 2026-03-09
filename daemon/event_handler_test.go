@@ -386,6 +386,49 @@ func TestEventHandler_PatternMatching(t *testing.T) {
 			filename: "/tmp/file.txt",
 			expected: false,
 		},
+		// ** globstar tests
+		{
+			name:     "doublestar matches zero intermediate segments",
+			patterns: []string{"/home/**/.ssh/id_rsa"},
+			filename: "/home/.ssh/id_rsa",
+			expected: true,
+		},
+		{
+			name:     "doublestar matches one intermediate segment",
+			patterns: []string{"/home/**/.ssh/id_rsa"},
+			filename: "/home/user/.ssh/id_rsa",
+			expected: true,
+		},
+		{
+			name:     "doublestar matches multiple intermediate segments",
+			patterns: []string{"/home/**/.ssh/id_rsa"},
+			filename: "/home/org/user/.ssh/id_rsa",
+			expected: true,
+		},
+		{
+			name:     "doublestar does not match wrong filename",
+			patterns: []string{"/home/**/.ssh/id_rsa"},
+			filename: "/home/user/.ssh/id_dsa",
+			expected: false,
+		},
+		{
+			name:     "doublestar at end matches any depth",
+			patterns: []string{"/home/**"},
+			filename: "/home/user/docs/private/key",
+			expected: true,
+		},
+		{
+			name:     "doublestar in proc path",
+			patterns: []string{"/proc/**/environ"},
+			filename: "/proc/1234/environ",
+			expected: true,
+		},
+		{
+			name:     "doublestar does not cross into unrelated path",
+			patterns: []string{"/etc/**"},
+			filename: "/tmp/file.txt",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {

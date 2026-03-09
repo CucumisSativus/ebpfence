@@ -5,9 +5,10 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/bmatcuk/doublestar/v4"
 )
 
 // EventHandlerConfig holds configuration for the event handler
@@ -201,11 +202,12 @@ func nullTermStr(b []byte) string {
 	return string(b)
 }
 
-// matchesPattern checks if a filename matches any of the disallowed patterns
+// matchesPattern checks if a filename matches any of the disallowed patterns.
+// Supports **, *, and ? wildcards (via doublestar), plus substring matching for
+// plain strings without wildcards (e.g. "secret" matches "/path/to/secret/file").
 func matchesPattern(filename string, patterns []string) bool {
 	for _, pattern := range patterns {
-		// Support both exact match and wildcard match
-		matched, _ := filepath.Match(pattern, filename)
+		matched, _ := doublestar.Match(pattern, filename)
 		if matched || strings.Contains(filename, pattern) {
 			return true
 		}
