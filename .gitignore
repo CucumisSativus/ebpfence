@@ -3,9 +3,3 @@
 
 # Rust build output
 target/
-
-# Go build artifacts (kept for reference on master branch)
-daemon/bpf_bpfeb.*
-daemon/bpf_bpfel.*
-ebpfence-daemon
-ebpfence-client
