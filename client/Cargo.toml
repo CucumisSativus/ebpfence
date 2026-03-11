@@ -1,0 +1,20 @@
+[package]
+name = "ebpfence-client"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ebpfence-client"
+path = "src/main.rs"
+
+[dependencies]
+tonic = "0.12"
+prost = "0.13"
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.4", features = ["util"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+anyhow = "1"
+
+[build-dependencies]
+tonic-build = "0.12"
