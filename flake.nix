@@ -37,6 +37,9 @@
           # Linux kernel headers for BPF programs
           linuxHeaders
 
+          # protoc — required by tonic-build to compile .proto files
+          protobuf
+
           # eBPF introspection
           bpftools
         ];
