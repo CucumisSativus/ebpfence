@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::sync::{Arc, RwLock};
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
@@ -7,6 +8,26 @@ use tracing::{error, info};
 
 use crate::config::BlockStrategy;
 use crate::ebpf_provider::{EBPFProvider, Event};
+
+/// Typed error returned by [`EventHandler::unblock_pid`].
+#[derive(Debug)]
+pub enum UnblockError {
+    /// The PID was not in the blocked set.
+    NotBlocked(u32),
+    /// The underlying eBPF map operation failed.
+    Provider(anyhow::Error),
+}
+
+impl fmt::Display for UnblockError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnblockError::NotBlocked(pid) => write!(f, "PID {pid} is not blocked"),
+            UnblockError::Provider(e) => write!(f, "provider error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for UnblockError {}
 
 pub struct EventHandlerConfig {
     pub disallowed_patterns: Vec<String>,
@@ -176,12 +197,12 @@ impl EventHandler {
             .collect()
     }
 
-    pub fn unblock_pid(&self, pid: u32) -> anyhow::Result<()> {
+    pub fn unblock_pid(&self, pid: u32) -> Result<(), UnblockError> {
         let mut state = self.state.write().unwrap();
         if !state.blocked_pids.contains(&pid) {
-            anyhow::bail!("PID {} is not blocked", pid);
+            return Err(UnblockError::NotBlocked(pid));
         }
-        self.provider.unblock_pid(pid)?;
+        self.provider.unblock_pid(pid).map_err(UnblockError::Provider)?;
         state.blocked_pids.remove(&pid);
         state.violation_counts.remove(&pid);
         println!(

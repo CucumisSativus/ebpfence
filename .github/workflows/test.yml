@@ -69,8 +69,5 @@ jobs:
     - name: Run integration tests
       run: |
         nix --extra-experimental-features 'nix-command flakes' develop .#integration --command \
-          bash -c 'sudo -E env PATH="$PATH" cargo test -p ebpfence-daemon --features integration -- --test-threads=1'
-
-    - name: Fix target directory permissions
-      if: always()
-      run: sudo chown -R "$(whoami)" target/ || true
+          bash -c 'sudo -E env PATH="$PATH" CARGO_TARGET_DIR=/tmp/ebpfence-target \
+            cargo test -p ebpfence-daemon --features integration -- --test-threads=1'

@@ -76,19 +76,39 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // Start gRPC server in background task
-    {
+    // Start gRPC server. Use &mut so we can await it after select! for clean shutdown.
+    let mut server_task = {
         let h = handler.clone();
         let socket = args.socket.clone();
-        tokio::spawn(async move {
-            if let Err(e) = server::serve(h, &socket).await {
-                tracing::error!("gRPC server error: {}", e);
-            }
-        });
-    }
+        let t = token.clone();
+        tokio::spawn(async move { server::serve(h, &socket, t).await })
+    };
 
-    // Run the event loop (blocks until cancellation)
-    handler.clone().run(token).await?;
+    // Race the event loop against the server task.
+    // Using &mut server_task so the handle remains accessible after select!.
+    tokio::select! {
+        result = handler.clone().run(token.clone()) => {
+            // Event loop finished (token was cancelled by signal handler).
+            // Cancel the token (no-op if already cancelled) and await the server
+            // so it can flush in-flight requests before we exit.
+            result?;
+            token.cancel();
+            if let Ok(Err(e)) = server_task.await {
+                tracing::warn!("gRPC server error during shutdown: {e}");
+            }
+        }
+        result = &mut server_task => {
+            // Server finished while the event loop was still running.
+            // Cancel the event loop and report the error — do not await
+            // server_task again as it has already resolved.
+            token.cancel();
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => anyhow::bail!("gRPC server error: {e}"),
+                Err(e) => anyhow::bail!("gRPC server panicked: {e}"),
+            }
+        }
+    }
 
     println!("\nExiting...");
     Ok(())

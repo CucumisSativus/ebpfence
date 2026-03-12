@@ -1,10 +1,12 @@
+use std::os::unix::fs::FileTypeExt;
 use std::path::Path;
 use std::sync::Arc;
 
 use tonic::{transport::Server, Request, Response, Status};
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-use crate::event_handler::EventHandler;
+use crate::event_handler::{EventHandler, UnblockError};
 
 // Include generated protobuf/tonic types from build.rs
 pub mod proto {
@@ -46,16 +48,28 @@ impl EbpFence for EbpFenceService {
         if pid == 0 {
             return Err(Status::invalid_argument("pid must be greater than 0"));
         }
-        self.handler.unblock_pid(pid).map_err(|e| {
-            Status::not_found(format!("failed to unblock PID {}: {}", pid, e))
+        self.handler.unblock_pid(pid).map_err(|e| match e {
+            UnblockError::NotBlocked(_) => Status::not_found(e.to_string()),
+            UnblockError::Provider(_) => Status::internal(e.to_string()),
         })?;
         Ok(Response::new(UnblockPidResponse {}))
     }
 }
 
-pub async fn serve(handler: Arc<EventHandler>, socket_path: &Path) -> anyhow::Result<()> {
-    // Remove a stale socket from a previous run
+pub async fn serve(
+    handler: Arc<EventHandler>,
+    socket_path: &Path,
+    token: CancellationToken,
+) -> anyhow::Result<()> {
+    // Remove a stale socket from a previous run, but only if it is actually
+    // a Unix socket — guard against misconfigured paths pointing at real files.
     if socket_path.exists() {
+        if !socket_path.metadata()?.file_type().is_socket() {
+            anyhow::bail!(
+                "{} already exists and is not a Unix socket",
+                socket_path.display()
+            );
+        }
         std::fs::remove_file(socket_path)?;
     }
 
@@ -69,7 +83,7 @@ pub async fn serve(handler: Arc<EventHandler>, socket_path: &Path) -> anyhow::Re
 
     Server::builder()
         .add_service(service)
-        .serve_with_incoming(incoming)
+        .serve_with_incoming_shutdown(incoming, token.cancelled())
         .await?;
 
     Ok(())

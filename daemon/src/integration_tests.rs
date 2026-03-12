@@ -8,8 +8,9 @@
 
 use std::fs;
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
@@ -87,39 +88,42 @@ fn test_event_collection() {
 
     let my_pid = std::process::id();
 
-    // Collect events in a background thread.
-    let collected = Arc::new(Mutex::new(Vec::new()));
-    let collected_clone = collected.clone();
+    // The collector sends matching results down a channel so the main thread
+    // blocks precisely until an event arrives rather than polling on a timer.
+    let (tx, rx) = mpsc::channel::<(bool, bool)>(); // (pid_matched, filename_matched)
     let provider_clone = provider.clone();
-    let collector = thread::spawn(move || loop {
-        match provider_clone.read_event() {
-            Ok(event) => collected_clone.lock().unwrap().push(event),
-            Err(_) => break,
+    let collector = thread::spawn(move || {
+        let mut pid_matched = false;
+        let mut filename_matched = false;
+        loop {
+            match provider_clone.read_event() {
+                Ok(event) => {
+                    if event.pid == my_pid {
+                        pid_matched = true;
+                    }
+                    if null_term_str(&event.filename) == tmp_file_str {
+                        filename_matched = true;
+                    }
+                    // Notify on every event so the main thread can check progress.
+                    let _ = tx.send((pid_matched, filename_matched));
+                    if filename_matched {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
         }
     });
-
-    // Give the collector a moment to start.
-    thread::sleep(Duration::from_millis(100));
 
     // Trigger the event.
     fs::read(&tmp_file).expect("read temp file");
 
-    // Wait up to 6 s for a matching event.
-    let deadline = Instant::now() + Duration::from_secs(6);
+    // Block until we see a matching event or the 6 s deadline expires.
     let mut pid_matched = false;
     let mut filename_matched = false;
-
-    while Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(50));
-        let events = collected.lock().unwrap();
-        for event in events.iter() {
-            if event.pid == my_pid {
-                pid_matched = true;
-            }
-            if null_term_str(&event.filename) == tmp_file_str {
-                filename_matched = true;
-            }
-        }
+    while let Ok((pm, fm)) = rx.recv_timeout(Duration::from_secs(6)) {
+        pid_matched = pm;
+        filename_matched = fm;
         if filename_matched {
             break;
         }
