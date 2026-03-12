@@ -69,4 +69,4 @@ jobs:
     - name: Run integration tests
       run: |
         nix --extra-experimental-features 'nix-command flakes' develop .#integration --command \
-          sudo -E cargo test -p ebpfence-daemon --features integration -- --test-threads=1
+          bash -c 'sudo env PATH="$PATH" cargo test -p ebpfence-daemon --features integration -- --test-threads=1'
