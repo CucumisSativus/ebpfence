@@ -3,28 +3,16 @@ set -e
 
 echo "Building ebpfence..."
 
-# Install Go tool dependencies declared in go.mod
-echo "Installing Go tools..."
-go install tool
-
-# Generate protobuf Go code
-echo "Generating protobuf code..."
-go generate ./proto/
-
-# Generate eBPF bindings from C code
-echo "Generating eBPF bindings..."
-go generate ./daemon/
-
-# Build the daemon binary
+# Build the daemon binary (also compiles BPF C + generates proto)
 echo "Building daemon binary..."
-CGO_ENABLED=0 go build -o ebpfence-daemon ./cmd/daemon/
+cargo build --release -p ebpfence-daemon
 
 # Build the client binary
 echo "Building client binary..."
-CGO_ENABLED=0 go build -o ebpfence-client ./cmd/client/
+cargo build --release -p ebpfence-client
 
 echo "Build complete!"
-echo "  Daemon: ./ebpfence-daemon"
-echo "  Client: ./ebpfence-client"
+echo "  Daemon: ./target/release/ebpfence-daemon"
+echo "  Client: ./target/release/ebpfence-client"
 echo ""
-echo "Usage: sudo ./ebpfence-daemon -config config.json"
+echo "Usage: sudo ./target/release/ebpfence-daemon -c config.json"

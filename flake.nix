@@ -10,49 +10,77 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+
+        # Packages required to build the project (BPF compilation + Rust linking).
+        # libbpf in buildInputs causes the Nix clang wrapper to inject
+        # -I${libbpf}/include into all clang invocations, making
+        # <bpf/bpf_helpers.h> etc. available for BPF C compilation.
+        buildDeps = with pkgs; [
+          # Rust toolchain
+          rustc
+          cargo
+          rustfmt
+          clippy
+
+          # BPF C compilation (libbpf-cargo calls clang internally)
+          clang
+          llvm
+
+          # libbpf headers — injected into clang by the Nix wrapper
+          libbpf
+
+          # libbpf-sys (vendored libbpf build) needs libelf and zlib via pkg-config
+          elfutils.dev
+          zlib.dev
+          pkg-config
+
+          # Linux kernel headers for BPF programs
+          linuxHeaders
+
+          # protoc — required by tonic-build to compile .proto files
+          protobuf
+
+          # eBPF introspection
+          bpftools
+        ];
+
+        # Hardening flags injected by the Nix clang wrapper that are
+        # unsupported for the BPF target — strip them so `cargo build` works.
+        stripBpfHardeningFlags = ''
+          export NIX_HARDENING_ENABLE="''${NIX_HARDENING_ENABLE/zerocallusedregs/}"
+          export NIX_HARDENING_ENABLE="''${NIX_HARDENING_ENABLE/stackprotector/}"
+          export NIX_HARDENING_ENABLE="''${NIX_HARDENING_ENABLE/stackclashprotection/}"
+        '';
       in
       {
+        # Default shell for day-to-day development.
         devShells.default = pkgs.mkShell {
           name = "ebpfence";
+          packages = buildDeps ++ [ pkgs.rust-analyzer ];
 
-          packages = with pkgs; [
-            # Go toolchain
-            go
-
-            # eBPF compilation (bpf2go uses clang to compile .bpf.c files)
-            clang
-            llvm
-
-            # libbpf headers required when compiling BPF C code
-            libbpf
-            pkg-config
-
-            # Linux kernel headers (provides <linux/bpf.h> etc.)
-            linuxHeaders
-
-            # Protobuf compiler (used by go generate ./proto/)
-            protobuf
-
-            # Useful eBPF debugging tool
-            bpftools
-          ];
-
-          # Point clang at the libbpf and kernel headers provided by Nix
-          shellHook = ''
-            export CGO_ENABLED=0
-            export PATH="$(go env GOPATH)/bin:$PATH"
-
-            # The Nix clang wrapper injects several hardening flags that are
-            # unsupported for the BPF target used by bpf2go. Strip them so
-            # `go generate ./daemon/` works without errors or warnings.
-            export NIX_HARDENING_ENABLE="''${NIX_HARDENING_ENABLE/zerocallusedregs/}"
-            export NIX_HARDENING_ENABLE="''${NIX_HARDENING_ENABLE/stackprotector/}"
-            export NIX_HARDENING_ENABLE="''${NIX_HARDENING_ENABLE/stackclashprotection/}"
-
+          shellHook = stripBpfHardeningFlags + ''
             echo "eBPFence dev shell ready."
-            echo "  clang:   $(clang --version | head -1)"
-            echo "  go:      $(go version)"
-            echo "  protoc:  $(protoc --version)"
+            echo "  rustc:  $(rustc --version)"
+            echo "  cargo:  $(cargo --version)"
+            echo "  clang:  $(clang --version | head -1)"
+          '';
+        };
+
+        # Minimal shell for running integration tests on a CI/test machine.
+        # Usage:
+        #   nix develop .#integration
+        #   sudo -E cargo test -p ebpfence-daemon --features integration -- --test-threads=1
+        devShells.integration = pkgs.mkShell {
+          name = "ebpfence-integration";
+          packages = buildDeps;
+
+          shellHook = stripBpfHardeningFlags + ''
+            echo "eBPFence integration test shell ready."
+            echo "  rustc:  $(rustc --version)"
+            echo "  cargo:  $(cargo --version)"
+            echo ""
+            echo "Run integration tests with:"
+            echo "  sudo -E cargo test -p ebpfence-daemon --features integration -- --test-threads=1"
           '';
         };
       }

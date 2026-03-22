@@ -1,6 +1,5 @@
-.idea
-daemon/bpf_bpfeb.*
-daemon/bpf_bpfel.*
-ebpfence-daemon
-ebpfence-client
+.idea/
 .direnv/
+
+# Rust build output
+target/

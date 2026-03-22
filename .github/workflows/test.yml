@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ master, main, rust ]
   pull_request:
     branches: [ master, main ]
 
@@ -15,47 +15,18 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
+    - name: Install Nix
+      uses: cachix/install-nix-action@v27
       with:
-        go-version: '1.25.5'
+        nix_path: nixpkgs=channel:nixos-unstable
+        extra_nix_config: |
+          experimental-features = nix-command flakes
 
-    - name: Install dependencies
-      run: go mod download
-
-    - name: Install build tools
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y clang llvm libbpf-dev protobuf-compiler
-
-    - name: Install protoc Go plugins
-      run: |
-        go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-
-    - name: Generate protobuf code
-      run: go generate ./proto/
-
-    - name: Generate eBPF bindings
-      run: go generate ./daemon/
-
-    - name: Build binaries
-      run: |
-        CGO_ENABLED=0 go build -o ebpfence-daemon ./cmd/daemon/
-        CGO_ENABLED=0 go build -o ebpfence-client ./cmd/client/
-        echo "✓ Both binaries built successfully"
+    - name: Build
+      run: nix --extra-experimental-features 'nix-command flakes' develop --command cargo build -p ebpfence-daemon -p ebpfence-client
 
     - name: Run unit tests
-      run: |
-        # Note: Integration tests excluded (require -tags=integration)
-        go test -v -race -coverprofile=coverage.out ./...
-
-    - name: Upload coverage
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.out
-        flags: unittests
-      continue-on-error: true
+      run: nix --extra-experimental-features 'nix-command flakes' develop --command cargo test -p ebpfence-daemon -p ebpfence-client
 
   integration-tests:
     name: Integration Tests
@@ -66,38 +37,23 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
+    - name: Install Nix
+      uses: cachix/install-nix-action@v27
       with:
-        go-version: '1.25.5'
-
-    - name: Install dependencies
-      run: go mod download
-
-    - name: Install protoc Go plugins
-      run: |
-        go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-
-    - name: Generate protobuf code
-      run: go generate ./proto/
-
-    - name: Generate eBPF bindings
-      run: go generate ./daemon/
+        nix_path: nixpkgs=channel:nixos-unstable
+        extra_nix_config: |
+          experimental-features = nix-command flakes
 
     - name: Check kernel support
       run: |
-        echo "Checking kernel version..."
-        uname -r
+        echo "Kernel version: $(uname -r)"
 
-        echo "Checking for BTF support..."
         if [ ! -f /sys/kernel/btf/vmlinux ]; then
           echo "✗ BTF not available"
           exit 1
         fi
         echo "✓ BTF is available"
 
-        echo "Checking LSM BPF support..."
         if [ ! -f /sys/kernel/security/lsm ]; then
           echo "✗ LSM info not available"
           exit 1
@@ -105,10 +61,13 @@ jobs:
         LSM_LIST=$(cat /sys/kernel/security/lsm)
         echo "LSM list: $LSM_LIST"
         if ! echo "$LSM_LIST" | grep -q "bpf"; then
-          echo "✗ LSM BPF is NOT enabled (bpf not in LSM list)"
+          echo "✗ LSM BPF is NOT enabled"
           exit 1
         fi
         echo "✓ LSM BPF is enabled"
 
     - name: Run integration tests
-      run: sudo go test -v -tags=integration -timeout=5m ./daemon/
+      run: |
+        nix --extra-experimental-features 'nix-command flakes' develop .#integration --command \
+          bash -c 'sudo -E env PATH="$PATH" CARGO_TARGET_DIR=/tmp/ebpfence-target \
+            cargo test -p ebpfence-daemon --features integration -- --test-threads=1'
